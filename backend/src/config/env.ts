@@ -2,8 +2,9 @@ import dotenv from 'dotenv'
 import path from 'path'
 import { z } from 'zod'
 
-// Carrega o .env da raiz do monorepo (um nível acima de backend/)
-dotenv.config({ path: path.resolve(process.cwd(), '..', '.env') })
+// Carrega backend/.env.local (local) e backend/.env (fallback)
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
+dotenv.config({ path: path.resolve(process.cwd(), '.env'), override: false })
 
 const schema = z.object({
   PORT:                      z.string().default('3001'),

@@ -3,15 +3,16 @@
 //  Banco: Supabase (PostgreSQL)
 //
 //  IMPORTANTE:
-//  - Migrações são feitas via SQL em supabase/migrations/ (não via prisma migrate)
+//  - Migrações são feitas via SQL em backend/supabase/migrations/ (não via prisma migrate)
 //  - Prisma é usado somente para type-safety e acesso ao banco no backend
 //  - Rode "npm run generate" dentro de backend/ para regenerar o client
 // ============================================================
 
 generator client {
   provider = "prisma-client-js"
-  // Output relativo à localização deste schema (supabase/prisma/)
-  output   = "../../backend/node_modules/.prisma/client"
+  // Output relativo à localização deste schema (backend/supabase/prisma/)
+  // ../../  → sobe para backend/  →  node_modules/.prisma/client
+  output   = "../../node_modules/.prisma/client"
 }
 
 datasource db {

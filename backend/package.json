@@ -8,11 +8,11 @@
     "build": "tsup src/index.ts --format cjs --dts --out-dir dist",
     "start": "node dist/index.js",
     "lint": "tsc --noEmit",
-    "generate": "prisma generate --schema=../supabase/prisma/schema.prisma",
-    "db:pull": "prisma db pull --schema=../supabase/prisma/schema.prisma"
+    "generate": "prisma generate --schema=./supabase/prisma/schema.prisma",
+    "db:pull": "prisma db pull --schema=./supabase/prisma/schema.prisma"
   },
   "prisma": {
-    "schema": "../supabase/prisma/schema.prisma"
+    "schema": "./supabase/prisma/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

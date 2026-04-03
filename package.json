@@ -5,21 +5,22 @@
   "private": true,
   "scripts": {
     "dev:frontend": "npm run dev --prefix frontend",
-    "dev:backend":  "npm run dev --prefix backend",
-    "dev:all":      "npx concurrently -n FRONT,BACK -c cyan,green \"npm run dev:frontend\" \"npm run dev:backend\"",
-
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:all": "npx concurrently -n FRONT,BACK -c cyan,green \"npm run dev:frontend\" \"npm run dev:backend\"",
     "build:frontend": "npm run build --prefix frontend",
-    "build:backend":  "npm run build --prefix backend",
-    "build":          "npm run build:frontend && npm run build:backend",
-
+    "build:backend": "npm run build --prefix backend",
+    "build": "npm run build:frontend && npm run build:backend",
     "install:frontend": "npm install --prefix frontend",
-    "install:backend":  "npm install --prefix backend",
-    "install:all":      "npm run install:frontend && npm run install:backend",
-
+    "install:backend": "npm install --prefix backend",
+    "install:all": "npm run install:frontend && npm run install:backend",
     "lint:frontend": "npm run lint --prefix frontend",
-    "lint:backend":  "npm run lint --prefix backend"
+    "lint:backend": "npm run lint --prefix backend"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "prisma": "^5.22.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
   }
 }

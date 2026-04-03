@@ -34,37 +34,44 @@ Isso instala as dependências do **frontend** e do **backend** automaticamente.
 
 ## 3. Configurar variáveis de ambiente
 
-Copie o arquivo de exemplo na **raiz** do projeto e preencha:
+As variáveis estão separadas por responsabilidade. Use `.env.example` como referência.
+
+### 3.1 Frontend — `frontend/.env.local`
 
 ```bash
-cp .env.example .env
+cp .env.example frontend/.env.local
+# Mantenha apenas as variáveis VITE_*
 ```
 
-Abra `.env` e preencha todos os campos:
-
 ```env
-# ── Frontend (Vite) ─────────────────────────────────────────
 VITE_SUPABASE_URL=https://SEU_PROJECT_REF.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJ...sua_anon_key...
 VITE_API_URL=http://localhost:3001
+```
 
-# ── Backend (Express) ────────────────────────────────────────
+### 3.2 Backend — `backend/.env.local`
+
+```bash
+cp .env.example backend/.env.local
+# Mantenha apenas as variáveis do backend
+```
+
+```env
 PORT=3001
 CORS_ORIGIN=http://localhost:5173
 NODE_ENV=development
 LOG_LEVEL=info
 SUPABASE_URL=https://SEU_PROJECT_REF.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...sua_service_role_key...
+DATABASE_URL=postgresql://postgres.[ref]:[senha]@aws-0-sa-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true
+DIRECT_URL=postgresql://postgres:[senha]@db.[ref].supabase.co:5432/postgres
 ```
 
 > **Onde encontrar as chaves:**
 > - Acesse o [Supabase Dashboard](https://supabase.com/dashboard)
-> - Vá em **Project Settings → API**
-> - `VITE_SUPABASE_ANON_KEY` → **anon key** (chave pública, segura para o frontend)
-> - `SUPABASE_SERVICE_ROLE_KEY` → **service_role** (chave privada, **nunca exponha no frontend**)
-
-> **Por que um único `.env`?**
-> O Vite lê as variáveis `VITE_*` da raiz via `envDir`. O backend também carrega o `.env` da raiz via `dotenv`. Isso evita duplicar configurações.
+> - `VITE_SUPABASE_ANON_KEY` → **Project Settings → API → anon key** (pública)
+> - `SUPABASE_SERVICE_ROLE_KEY` → **Project Settings → API → service_role** (**nunca exponha no frontend**)
+> - `DATABASE_URL` / `DIRECT_URL` → **Project Settings → Database → Connection string**
 
 ---
 
@@ -122,17 +129,20 @@ FinControl/
 │   │   ├── config/env.ts      # Validação das variáveis de ambiente
 │   │   ├── middleware/        # auth, requestLogger, errorHandler
 │   │   ├── routes/            # /api/health | /api/logs
-│   │   ├── services/          # Cliente Supabase admin
+│   │   ├── services/          # prisma.ts | supabase.ts
 │   │   └── utils/logger.ts    # Winston (console + arquivo)
+│   ├── supabase/
+│   │   ├── prisma/
+│   │   │   └── schema.prisma  # Modelos Prisma (type-safety)
+│   │   └── migrations/        # Migrações SQL do banco de dados
+│   │       ├── 20260402000000_initial_schema.sql
+│   │       ├── 20260402000001_add_salary_config.sql
+│   │       └── 20260402000002_salary_tax_and_split.sql
 │   ├── logs/                  # Arquivos de log (gerados automaticamente)
+│   ├── .env.local             # Variáveis do backend (não commitado)
 │   └── package.json
 │
-├── supabase/
-│   └── migrations/            # Migrações SQL do banco de dados
-│       ├── 20260402000000_initial_schema.sql
-│       ├── 20260402000001_add_salary_config.sql
-│       └── 20260402000002_salary_tax_and_split.sql
-├── .env.example               # Modelo de variáveis de ambiente (raiz)
+├── .env.example               # Modelo de variáveis de ambiente
 └── package.json               # Scripts raiz
 ```
 
@@ -175,7 +185,7 @@ Os arquivos são rotacionados diariamente e comprimidos após 30 dias.
 | `http` | Todas as requisições HTTP |
 | `debug` | Detalhes para depuração (só em dev) |
 
-Para mudar o nível, edite `LOG_LEVEL` no `.env` (raiz do projeto).
+Para mudar o nível, edite `LOG_LEVEL` no `backend/.env.local`.
 
 ---
 
@@ -205,13 +215,13 @@ Para mudar o nível, edite `LOG_LEVEL` no `.env` (raiz do projeto).
 ## 9. Problemas comuns
 
 ### `SUPABASE_SERVICE_ROLE_KEY obrigatório`
-O arquivo `.env` na raiz não foi criado ou está incompleto. Copie `.env.example` e preencha todas as variáveis (passo 3).
+O arquivo `backend/.env.local` não foi criado ou está incompleto. Veja o passo 3.2.
 
 ### Frontend abre mas não carrega dados
-Verifique se `.env` existe na raiz e se `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` estão corretos.
+Verifique se `frontend/.env.local` existe e se `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` estão corretos.
 
 ### Porta 3001 já em uso
-Mude o `PORT` no `.env` (raiz) e atualize o `VITE_API_URL` na mesma linha para a nova porta.
+Mude o `PORT` em `backend/.env.local` e atualize `VITE_API_URL` em `frontend/.env.local` para a nova porta.
 
 ### `npm run install:all` falha no backend
 Rode manualmente dentro da pasta:
