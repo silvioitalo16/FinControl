@@ -1,0 +1,234 @@
+// ============================================================
+//  FinControl — Prisma Schema
+//  Banco: Supabase (PostgreSQL)
+//
+//  IMPORTANTE:
+//  - Migrações são feitas via SQL em supabase/migrations/ (não via prisma migrate)
+//  - Prisma é usado somente para type-safety e acesso ao banco no backend
+//  - Rode "npm run generate" dentro de backend/ para regenerar o client
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+  // Output relativo à localização deste schema (supabase/prisma/)
+  output   = "../../backend/node_modules/.prisma/client"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // DATABASE_URL  → pooling via PgBouncer (porta 6543) — para queries normais
+  // DIRECT_URL    → conexão direta (porta 5432) — necessário para introspect/push
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ── PROFILES ─────────────────────────────────────────────────
+model Profile {
+  id         String    @id @db.Uuid
+  full_name  String    @default("")
+  avatar_url String?
+  phone      String?
+  birth_date DateTime? @db.Date
+  location   String?
+  plan       String    @default("free")
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime  @default(now()) @db.Timestamptz(6)
+
+  categories         Category[]
+  transactions       Transaction[]
+  goals              Goal[]
+  goal_contributions GoalContribution[]
+  budgets            Budget[]
+  notifications      Notification[]
+  user_settings      UserSettings?
+  audit_logs         AuditLog[]
+  salary_configs     SalaryConfig[]
+
+  @@map("profiles")
+}
+
+// ── CATEGORIES ────────────────────────────────────────────────
+model Category {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String?  @db.Uuid
+  name       String
+  color      String   @default("#6b7280")
+  icon       String   @default("Package")
+  type       String   // 'income' | 'expense' | 'both'
+  is_default Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+
+  user         Profile?      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  budgets      Budget[]
+
+  @@map("categories")
+}
+
+// ── TRANSACTIONS ──────────────────────────────────────────────
+model Transaction {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String    @db.Uuid
+  category_id        String    @db.Uuid
+  type               String    // 'income' | 'expense'
+  amount             Decimal   @db.Decimal(12, 2)
+  description        String    @default("")
+  notes              String?
+  date               DateTime  @db.Date
+  is_recurring       Boolean   @default(false)
+  recurring_interval String?   // 'daily' | 'weekly' | 'monthly' | 'yearly'
+  recurring_end_date DateTime? @db.Date
+  parent_id          String?   @db.Uuid
+  deleted_at         DateTime? @db.Timestamptz(6)
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime  @default(now()) @db.Timestamptz(6)
+
+  user     Profile      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  category Category     @relation(fields: [category_id], references: [id])
+  parent   Transaction?  @relation("TransactionChildren", fields: [parent_id], references: [id])
+  children Transaction[] @relation("TransactionChildren")
+
+  @@index([user_id, date(sort: Desc)])
+  @@index([user_id, type])
+  @@index([user_id, category_id])
+  @@map("transactions")
+}
+
+// ── GOALS ────────────────────────────────────────────────────
+model Goal {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String    @db.Uuid
+  name           String
+  target_amount  Decimal   @db.Decimal(12, 2)
+  current_amount Decimal   @default(0) @db.Decimal(12, 2)
+  deadline       DateTime? @db.Date
+  color          String    @default("#10b981")
+  icon           String?
+  status         String    @default("active") // 'active' | 'completed' | 'cancelled'
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime  @default(now()) @db.Timestamptz(6)
+
+  user          Profile            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  contributions GoalContribution[]
+
+  @@index([user_id, status])
+  @@map("goals")
+}
+
+// ── GOAL_CONTRIBUTIONS ────────────────────────────────────────
+model GoalContribution {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  goal_id    String   @db.Uuid
+  user_id    String   @db.Uuid
+  amount     Decimal  @db.Decimal(12, 2)
+  notes      String?
+  date       DateTime @default(now()) @db.Date
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  goal Goal    @relation(fields: [goal_id], references: [id], onDelete: Cascade)
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("goal_contributions")
+}
+
+// ── BUDGETS ───────────────────────────────────────────────────
+model Budget {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String   @db.Uuid
+  category_id    String   @db.Uuid
+  month          DateTime @db.Date
+  planned_amount Decimal  @db.Decimal(12, 2)
+  spent_amount   Decimal  @default(0) @db.Decimal(12, 2)
+  alert_sent_80  Boolean  @default(false)
+  alert_sent_100 Boolean  @default(false)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  user     Profile  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [category_id], references: [id])
+
+  @@unique([user_id, category_id, month])
+  @@index([user_id, month])
+  @@map("budgets")
+}
+
+// ── NOTIFICATIONS ─────────────────────────────────────────────
+model Notification {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  type       String   // 'budget' | 'goal' | 'transaction' | 'salary' | 'system'
+  title      String
+  message    String
+  metadata   Json?    @db.JsonB
+  is_read    Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, is_read, created_at(sort: Desc)])
+  @@map("notifications")
+}
+
+// ── USER_SETTINGS ─────────────────────────────────────────────
+model UserSettings {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id             String   @unique @db.Uuid
+  push_notifications  Boolean  @default(true)
+  email_notifications Boolean  @default(true)
+  transaction_alerts  Boolean  @default(true)
+  budget_alerts       Boolean  @default(true)
+  goal_alerts         Boolean  @default(true)
+  dark_mode           Boolean  @default(false)
+  language            String   @default("pt-BR")
+  two_factor_enabled  Boolean  @default(false)
+  two_factor_secret   String?
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @default(now()) @db.Timestamptz(6)
+
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+// ── AUDIT_LOGS ────────────────────────────────────────────────
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  action     String
+  metadata   Json?    @db.JsonB
+  ip_address String?
+  user_agent String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}
+
+// ── SALARY_CONFIGS ────────────────────────────────────────────
+model SalaryConfig {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                String    @db.Uuid
+  name                   String    @default("Meu Salário")
+  active                 Boolean   @default(true)
+  amount                 Decimal   @db.Decimal(12, 2)
+  tax_mode               String    @default("net") // 'net' | 'gross_auto' | 'gross_manual'
+  gross_amount           Decimal?  @db.Decimal(12, 2)
+  inss_amount            Decimal?  @db.Decimal(12, 2)
+  irrf_amount            Decimal?  @db.Decimal(12, 2)
+  other_deductions       Decimal   @default(0) @db.Decimal(12, 2)
+  other_deductions_label String?
+  payment_type           String    // 'monthly' | 'biweekly' | 'custom'
+  payment_day            Int?
+  payment_day_2          Int?
+  payment_split_percent  Int       @default(50)
+  custom_interval_days   Int?
+  custom_start_date      DateTime? @db.Date
+  created_at             DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime  @default(now()) @db.Timestamptz(6)
+
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("salary_configs")
+}
