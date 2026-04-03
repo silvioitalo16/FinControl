@@ -48,8 +48,8 @@ function log(level: LogLevel, message: string, meta?: LogMeta) {
     }
   }
 
-  // Em produção: envia warn e error para o backend
-  if (!isDev && (level === 'error' || level === 'warn')) {
+  // Sempre envia warn e error para o backend (visível no terminal em dev e prod)
+  if (level === 'error' || level === 'warn') {
     void sendToBackend(level, message, meta)
   }
 }
