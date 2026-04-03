@@ -1,5 +1,6 @@
 import { QueryClient } from '@tanstack/react-query'
 import { parseSupabaseError } from '@/app/utils/errors'
+import { logger } from '@/app/lib/logger'
 import { toast } from 'sonner'
 
 export const queryClient = new QueryClient({
@@ -13,7 +14,9 @@ export const queryClient = new QueryClient({
     },
     mutations: {
       onError: (error) => {
-        toast.error(parseSupabaseError(error))
+        const message = parseSupabaseError(error)
+        logger.error('Mutation falhou', { message, raw: String(error) })
+        toast.error(message)
       },
     },
   },

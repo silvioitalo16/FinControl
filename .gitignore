@@ -1,24 +1,28 @@
-# Dependencies
+# ── Dependências ──────────────────────────────────────────────────────────────
 node_modules/
 .pnp
 .pnp.js
 
-# Build
+# ── Build ─────────────────────────────────────────────────────────────────────
 dist/
 dist-ssr/
+.vite/
 
-# Environment (NUNCA commitar)
+# ── Variáveis de ambiente (NUNCA commitar) ────────────────────────────────────
+.env
 .env.local
 .env.*.local
 .env.production
+backend/.env
 
-# Logs
+# ── Logs do backend ───────────────────────────────────────────────────────────
+backend/logs/
 logs/
 *.log
 npm-debug.log*
 pnpm-debug.log*
 
-# Editor
+# ── Editor ────────────────────────────────────────────────────────────────────
 .vscode/*
 !.vscode/extensions.json
 .idea/
@@ -28,15 +32,15 @@ pnpm-debug.log*
 *.sln
 *.sw?
 
-# OS
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# TypeScript
+# ── TypeScript ────────────────────────────────────────────────────────────────
 *.tsbuildinfo
 
-# Claude Code (memórias e sessões locais)
+# ── Claude Code (memórias e sessões locais) ───────────────────────────────────
 .claude/
 
-# Pasta legada
+# ── Pasta legada ──────────────────────────────────────────────────────────────
 Controle Financeiro Site/
