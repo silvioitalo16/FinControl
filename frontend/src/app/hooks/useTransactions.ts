@@ -31,6 +31,7 @@ function invalidateAfterTransaction(qc: ReturnType<typeof useQueryClient>) {
 export function useCreateTransaction() {
   const qc = useQueryClient()
   return useMutation({
+    mutationKey: ['transactions', 'create'],
     mutationFn: (input: TransactionInput) => transactionsService.createTransaction(input),
     onSuccess: () => {
       invalidateAfterTransaction(qc)
@@ -42,6 +43,7 @@ export function useCreateTransaction() {
 export function useUpdateTransaction() {
   const qc = useQueryClient()
   return useMutation({
+    mutationKey: ['transactions', 'update'],
     mutationFn: ({ id, input }: { id: string; input: Partial<TransactionInput> }) =>
       transactionsService.updateTransaction(id, input),
     onSuccess: () => {
@@ -54,6 +56,7 @@ export function useUpdateTransaction() {
 export function useDeleteTransaction() {
   const qc = useQueryClient()
   return useMutation({
+    mutationKey: ['transactions', 'delete'],
     mutationFn: (id: string) => transactionsService.deleteTransaction(id),
     onSuccess: () => {
       invalidateAfterTransaction(qc)

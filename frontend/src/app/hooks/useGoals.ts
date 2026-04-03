@@ -22,6 +22,7 @@ export function useGoalContributions(goalId: string) {
 export function useCreateGoal() {
   const qc = useQueryClient()
   return useMutation({
+    mutationKey: ['goals', 'create'],
     mutationFn: (input: GoalInput) => goalsService.createGoal(input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.goals() })
@@ -33,6 +34,7 @@ export function useCreateGoal() {
 export function useUpdateGoal() {
   const qc = useQueryClient()
   return useMutation({
+    mutationKey: ['goals', 'update'],
     mutationFn: ({ id, input }: { id: string; input: Partial<GoalInput> }) =>
       goalsService.updateGoal(id, input),
     onSuccess: () => {
@@ -45,6 +47,7 @@ export function useUpdateGoal() {
 export function useDeleteGoal() {
   const qc = useQueryClient()
   return useMutation({
+    mutationKey: ['goals', 'delete'],
     mutationFn: (id: string) => goalsService.deleteGoal(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.goals() })
@@ -56,6 +59,7 @@ export function useDeleteGoal() {
 export function useAddContribution() {
   const qc = useQueryClient()
   return useMutation({
+    mutationKey: ['goals', 'contribution'],
     mutationFn: ({ goalId, input }: { goalId: string; input: GoalContributionInput }) =>
       goalsService.addContribution(goalId, input),
     onSuccess: (_, { goalId }) => {

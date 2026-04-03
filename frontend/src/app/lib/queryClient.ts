@@ -20,9 +20,14 @@ export const queryClient = new QueryClient({
     },
   }),
   mutationCache: new MutationCache({
-    onError: (error) => {
+    onSuccess: (_data, _vars, _ctx, mutation) => {
+      const key = mutation.options.mutationKey
+      if (key) logger.info(`✅ ${String(key)}`)
+    },
+    onError: (error, _vars, _ctx, mutation) => {
       const message = parseSupabaseError(error)
-      logger.error('Mutation falhou', { message, raw: String(error) })
+      const key = mutation.options.mutationKey
+      logger.error(`❌ ${String(key ?? 'mutation')} falhou`, { message, raw: String(error) })
       toast.error(message)
     },
   }),

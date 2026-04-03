@@ -48,10 +48,8 @@ function log(level: LogLevel, message: string, meta?: LogMeta) {
     }
   }
 
-  // Sempre envia warn e error para o backend (visível no terminal em dev e prod)
-  if (level === 'error' || level === 'warn') {
-    void sendToBackend(level, message, meta)
-  }
+  // Envia todos os níveis para o backend (visível no terminal)
+  void sendToBackend(level, message, meta)
 }
 
 export const logger = {
