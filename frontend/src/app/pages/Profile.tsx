@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Camera, Edit2, Save, X, Lock, User, Calendar, Phone, MapPin } from 'lucide-react'
-import { useProfileData, useUpdateProfile, useUploadAvatar, useChangePassword } from '@/app/hooks/useProfile'
+import { useProfile, useUpdateProfile, useUploadAvatar, useChangePassword } from '@/app/hooks/useProfile'
 import { useTransactions } from '@/app/hooks/useTransactions'
 import { useGoals } from '@/app/hooks/useGoals'
 import { profileSchema, changePasswordSchema, type ProfileInput, type ChangePasswordInput } from '@/app/validators/profile.schema'
@@ -10,7 +10,7 @@ import { formatCurrency, getInitials } from '@/app/utils/formatters'
 import { useAuthStore } from '@/app/stores/auth.store'
 
 function ProfileForm({ onCancel }: { onCancel: () => void }) {
-  const { data: profile } = useProfileData()
+  const { data: profile } = useProfile()
   const updateProfile = useUpdateProfile()
 
   const { register, handleSubmit, formState: { errors } } = useForm<ProfileInput>({
@@ -147,7 +147,7 @@ export default function Profile() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { profile, user } = useAuthStore()
-  const { data: profileData } = useProfileData()
+  const { data: profileData } = useProfile()
   const uploadAvatar = useUploadAvatar()
   const { data: transactionsData } = useTransactions({ pageSize: 1 })
   const { data: goals } = useGoals()

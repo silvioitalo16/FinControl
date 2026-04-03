@@ -1,5 +1,5 @@
 import { supabase, getAuthUserId } from '@/app/lib/supabase'
-import type { Profile, ProfileUpdate } from '@/app/types'
+import type { Profile, ProfileUpdate, UserSettingsUpdate } from '@/app/types'
 import { AVATAR_BUCKET } from '@/app/config/constants'
 
 export const profileService = {
@@ -55,10 +55,9 @@ export const profileService = {
     return data
   },
 
-  async updateSettings(updates: Record<string, unknown>) {
+  async updateSettings(updates: Omit<UserSettingsUpdate, 'two_factor_secret'>) {
     const userId = getAuthUserId()
-    // Nunca permite atualizar two_factor_secret via este service
-    const { two_factor_secret: _, ...safeUpdates } = updates as { two_factor_secret?: unknown }
+    const { two_factor_secret: _, ...safeUpdates } = updates as UserSettingsUpdate
     const { data, error } = await supabase
       .from('user_settings')
       .update(safeUpdates)

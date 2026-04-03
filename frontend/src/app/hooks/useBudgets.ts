@@ -18,7 +18,7 @@ export function useCreateBudget() {
   return useMutation({
     mutationFn: (input: BudgetInput) => budgetsService.createBudget(input),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budgets'] })
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.budgets() })
       toast.success('Orçamento criado.')
     },
   })
@@ -30,7 +30,7 @@ export function useUpdateBudget() {
     mutationFn: ({ id, input }: { id: string; input: Partial<BudgetInput> }) =>
       budgetsService.updateBudget(id, input),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budgets'] })
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.budgets() })
       toast.success('Orçamento atualizado.')
     },
   })
@@ -41,7 +41,7 @@ export function useDeleteBudget() {
   return useMutation({
     mutationFn: (id: string) => budgetsService.deleteBudget(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['budgets'] })
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.budgets() })
       toast.success('Orçamento removido.')
     },
   })

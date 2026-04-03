@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { authService } from '@/app/services/auth.service'
@@ -59,15 +59,6 @@ export function useAuthListener() {
 
     return () => subscription.unsubscribe()
   }, [setUser, setSession, setProfile, setLoading, reset])
-}
-
-export function useProfile() {
-  const { isAuthenticated } = useAuthStore()
-  return useQuery({
-    queryKey: QUERY_KEYS.profile(),
-    queryFn: () => profileService.getProfile(),
-    enabled: isAuthenticated,
-  })
 }
 
 export function useSignIn() {

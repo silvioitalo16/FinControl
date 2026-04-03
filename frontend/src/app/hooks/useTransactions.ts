@@ -19,17 +19,21 @@ export function useMonthlySummary(month: string) {
   })
 }
 
+function invalidateAfterTransaction(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: QUERY_KEYS.transactions() })
+  qc.invalidateQueries({ queryKey: QUERY_KEYS.transactionsSummary() })
+  qc.invalidateQueries({ queryKey: QUERY_KEYS.budgets() })
+  qc.invalidateQueries({ queryKey: QUERY_KEYS.dashboard() })
+  qc.invalidateQueries({ queryKey: QUERY_KEYS.salary.status() })
+  qc.invalidateQueries({ queryKey: QUERY_KEYS.notifications() })
+}
+
 export function useCreateTransaction() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: TransactionInput) => transactionsService.createTransaction(input),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.transactions() })
-      qc.invalidateQueries({ queryKey: ['transactions', 'summary'] })
-      qc.invalidateQueries({ queryKey: ['budgets'] })
-      qc.invalidateQueries({ queryKey: ['dashboard'] })
-      qc.invalidateQueries({ queryKey: ['salary', 'status'] })
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.notifications() })
+      invalidateAfterTransaction(qc)
       toast.success('Transação adicionada.')
     },
   })
@@ -41,10 +45,7 @@ export function useUpdateTransaction() {
     mutationFn: ({ id, input }: { id: string; input: Partial<TransactionInput> }) =>
       transactionsService.updateTransaction(id, input),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.transactions() })
-      qc.invalidateQueries({ queryKey: ['transactions', 'summary'] })
-      qc.invalidateQueries({ queryKey: ['budgets'] })
-      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      invalidateAfterTransaction(qc)
       toast.success('Transação atualizada.')
     },
   })
@@ -55,10 +56,7 @@ export function useDeleteTransaction() {
   return useMutation({
     mutationFn: (id: string) => transactionsService.deleteTransaction(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.transactions() })
-      qc.invalidateQueries({ queryKey: ['transactions', 'summary'] })
-      qc.invalidateQueries({ queryKey: ['budgets'] })
-      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      invalidateAfterTransaction(qc)
       toast.success('Transação removida.')
     },
   })

@@ -5,8 +5,9 @@ import { authService } from '@/app/services/auth.service'
 import { useAuthStore } from '@/app/stores/auth.store'
 import { QUERY_KEYS } from '@/app/config/queryKeys'
 import type { ProfileInput } from '@/app/validators/profile.schema'
+import type { UserSettingsUpdate } from '@/app/types'
 
-export function useProfileData() {
+export function useProfile() {
   const { isAuthenticated } = useAuthStore()
   return useQuery({
     queryKey: QUERY_KEYS.profile(),
@@ -52,7 +53,7 @@ export function useUploadAvatar() {
 export function useUpdateSettings() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (updates: Record<string, unknown>) => profileService.updateSettings(updates),
+    mutationFn: (updates: Omit<UserSettingsUpdate, 'two_factor_secret'>) => profileService.updateSettings(updates),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.settings() })
       toast.success('Configurações salvas.')
