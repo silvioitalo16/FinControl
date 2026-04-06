@@ -83,9 +83,10 @@ export const salaryService = {
         payment_type:           input.payment_type,
         payment_day:            input.payment_day            ?? null,
         payment_day_2:          input.payment_day_2          ?? null,
-        payment_split_percent:  input.payment_split_percent,
-        custom_interval_days:   input.custom_interval_days   ?? null,
-        custom_start_date:      input.custom_start_date      ?? null,
+        payment_split_percent:       input.payment_split_percent,
+        payment_fixed_first_amount:  input.payment_fixed_first_amount ?? null,
+        custom_interval_days:        input.custom_interval_days       ?? null,
+        custom_start_date:           input.custom_start_date          ?? null,
       })
       .select()
       .single()

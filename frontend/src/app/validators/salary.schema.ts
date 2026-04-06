@@ -14,7 +14,8 @@ export const salarySchema = z
     payment_type:           z.enum(['monthly', 'biweekly', 'custom']),
     payment_day:            z.number().int().min(1).max(31, 'Dia inválido.').optional(),
     payment_day_2:          z.number().int().min(1).max(31, 'Dia inválido.').optional(),
-    payment_split_percent:  z.number().int().min(1).max(99).default(50),
+    payment_split_percent:       z.number().int().min(1).max(99).default(50),
+    payment_fixed_first_amount:  z.number().positive().optional().nullable(),
     custom_interval_days:   z.number().int().min(1, 'Intervalo deve ser pelo menos 1 dia.').optional(),
     custom_start_date:      z
       .string()

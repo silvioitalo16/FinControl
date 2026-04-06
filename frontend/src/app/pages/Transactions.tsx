@@ -75,13 +75,21 @@ function TransactionModal({
   )
 
   async function onSubmit(data: TransactionInput) {
-    if (isEdit) {
-      await updateMutation.mutateAsync({ id: editData!.id, input: data })
-    } else {
-      await createMutation.mutateAsync(data)
+    try {
+      if (isEdit) {
+        await updateMutation.mutateAsync({ id: editData!.id, input: data })
+      } else {
+        await createMutation.mutateAsync(data)
+      }
+      reset()
+      onClose()
+    } catch {
+      // erro tratado pelo MutationCache global (toast + log)
     }
-    reset()
-    onClose()
+  }
+
+  function onInvalid(errs: object) {
+    console.error('[TransactionModal] validação falhou:', errs)
   }
 
   if (!open) return null
@@ -98,7 +106,7 @@ function TransactionModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="p-6 space-y-4">
           {/* Type toggle */}
           <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-xl">
             <label className={`flex items-center justify-center gap-2 py-2 rounded-lg cursor-pointer font-medium text-sm transition-all ${type === 'expense' ? 'bg-white shadow text-red-600' : 'text-gray-500'}`}>

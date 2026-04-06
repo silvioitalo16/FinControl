@@ -338,6 +338,7 @@ export type Database = {
           other_deductions_label: string | null
           payment_day: number | null
           payment_day_2: number | null
+          payment_fixed_first_amount: number | null
           payment_split_percent: number
           payment_type: string
           tax_mode: string
@@ -359,6 +360,7 @@ export type Database = {
           other_deductions_label?: string | null
           payment_day?: number | null
           payment_day_2?: number | null
+          payment_fixed_first_amount?: number | null
           payment_split_percent?: number
           payment_type: string
           tax_mode?: string
@@ -380,6 +382,7 @@ export type Database = {
           other_deductions_label?: string | null
           payment_day?: number | null
           payment_day_2?: number | null
+          payment_fixed_first_amount?: number | null
           payment_split_percent?: number
           payment_type?: string
           tax_mode?: string
@@ -533,6 +536,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_inss_br: { Args: { p_gross: number }; Returns: number }
+      calculate_irrf_br: {
+        Args: { p_gross: number; p_inss: number }
+        Returns: number
+      }
       get_salary_status: { Args: never; Returns: Json }
     }
     Enums: {

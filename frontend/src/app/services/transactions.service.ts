@@ -36,9 +36,10 @@ export const transactionsService = {
   async getMonthlySummary(month: string): Promise<{ income: number; expenses: number }> {
     const userId = getAuthUserId()
     const startDate = month  // ex: '2026-04-01'
-    const endDate = new Date(new Date(month).getFullYear(), new Date(month).getMonth() + 1, 0)
-      .toISOString()
-      .split('T')[0]
+    // Parseia diretamente da string para evitar bug de timezone (new Date('yyyy-MM-dd') = UTC midnight)
+    const [yearStr, monStr] = month.split('-')
+    const lastDay = new Date(parseInt(yearStr, 10), parseInt(monStr, 10), 0).getDate()
+    const endDate = `${yearStr}-${monStr}-${String(lastDay).padStart(2, '0')}`
 
     const { data, error } = await supabase
       .from('transactions')

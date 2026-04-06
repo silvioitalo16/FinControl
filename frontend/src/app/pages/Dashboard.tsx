@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { TrendingUp, TrendingDown, Wallet, PiggyBank, Plus, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import { subMonths } from 'date-fns'
+import { useNavigate } from 'react-router'
 import { useQueries } from '@tanstack/react-query'
 import { useMonthlySummary, useTransactions } from '@/app/hooks/useTransactions'
 import { useGoals } from '@/app/hooks/useGoals'
@@ -21,10 +21,15 @@ const last6Months = Array.from({ length: 6 }, (_, i) =>
 )
 
 export default function Dashboard() {
-  const [_modal, setModal] = useState(false)
+  const navigate = useNavigate()
 
   const thisMonth = toFirstDayOfMonth()
   const lastMonth = toFirstDayOfMonth(subMonths(new Date(), 1))
+
+  // Último dia do mês atual — parseia a string diretamente para evitar bug de timezone
+  const [yearStr, monStr] = thisMonth.split('-')
+  const lastDay = new Date(parseInt(yearStr, 10), parseInt(monStr, 10), 0).getDate()
+  const thisMonthEnd = `${yearStr}-${monStr}-${String(lastDay).padStart(2, '0')}`
 
   const { data: current }          = useMonthlySummary(thisMonth)
   const { data: previous }         = useMonthlySummary(lastMonth)
@@ -44,8 +49,7 @@ export default function Dashboard() {
   const { data: allCurrentMonthExpenses } = useTransactions({
     type: 'expense',
     dateFrom: thisMonth,
-    dateTo: toFirstDayOfMonth(subMonths(new Date(), -1)).replace(/-\d{2}$/, '') + '-' +
-      String(new Date(new Date(thisMonth).getFullYear(), new Date(thisMonth).getMonth() + 1, 0).getDate()).padStart(2, '0'),
+    dateTo: thisMonthEnd,
     pageSize: 500,
   })
 
@@ -138,7 +142,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-bold text-gray-800">Transações Recentes</h3>
           <button
-            onClick={() => setModal(true)}
+            onClick={() => navigate('/transactions')}
             className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2 rounded-xl font-medium hover:from-emerald-600 hover:to-teal-700 transition-all flex items-center gap-2 text-sm"
           >
             <Plus className="w-4 h-4" />

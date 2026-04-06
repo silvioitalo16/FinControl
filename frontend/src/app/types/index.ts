@@ -36,11 +36,11 @@ export type RecurringInterval = 'weekly' | 'monthly' | 'yearly'
 
 // ── Tipos compostos para UI ───────────────────────────────────────────────────
 export type TransactionWithCategory = Transaction & {
-  categories: Category
+  categories: Category | null
 }
 
 export type BudgetWithCategory = Budget & {
-  categories: Category
+  categories: Category | null
 }
 
 export type GoalWithProgress = Goal & {

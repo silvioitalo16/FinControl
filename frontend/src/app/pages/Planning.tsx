@@ -20,60 +20,135 @@ const PAYMENT_TYPE_LABELS: Record<string, string> = {
   custom:   'Personalizado',
 }
 
+// ── Descontos comuns da folha brasileira ─────────────────────────────────────
+type DeductionItem = { id: string; label: string; amount: number; enabled: boolean }
+
+const PRESET_DEDUCTIONS: DeductionItem[] = [
+  { id: 'vr',   label: 'Vale Refeição / Alimentação', amount: 0, enabled: false },
+  { id: 'vt',   label: 'Vale Transporte',             amount: 0, enabled: false },
+  { id: 'ps',   label: 'Plano de Saúde',              amount: 0, enabled: false },
+  { id: 'adto', label: 'Adiantamento',                amount: 0, enabled: false },
+  { id: 'out',  label: 'Outros',                      amount: 0, enabled: false },
+]
+
+const INPUT_CLS = 'w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500'
+
 function SalaryModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: config } = useSalaryConfig()
-  const upsert = useUpsertSalary()
-  const deleteSalary = useDeleteSalary()
+  const upsert           = useUpsertSalary()
+  const deleteSalary     = useDeleteSalary()
 
-  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm<SalaryInput>({
+  const [step,           setStep]           = useState<1 | 2>(1)
+  const [useGross,       setUseGross]       = useState(false)
+  const [autoTax,        setAutoTax]        = useState(true)
+  const [deductions,     setDeductions]     = useState<DeductionItem[]>(PRESET_DEDUCTIONS)
+  const [fixedFirstMode, setFixedFirstMode] = useState(false)
+
+  const { register, handleSubmit, watch, reset, setValue, trigger, formState: { errors } } = useForm<SalaryInput>({
     resolver: zodResolver(salarySchema),
-    defaultValues: {
-      name: 'Salário', tax_mode: 'net', payment_type: 'monthly',
-      payment_day: 5, payment_split_percent: 50, other_deductions: 0,
-    },
+    defaultValues: { name: 'Salário', tax_mode: 'net', payment_type: 'monthly', payment_day: 5, payment_split_percent: 50, other_deductions: 0 },
   })
 
-  const paymentType     = watch('payment_type')
-  const taxMode         = watch('tax_mode')
-  const grossAmount     = watch('gross_amount')     ?? 0
-  const inssAmount      = watch('inss_amount')      ?? 0
-  const irrfAmount      = watch('irrf_amount')      ?? 0
-  const otherDeductions = watch('other_deductions') ?? 0
-  const netAmount       = watch('amount')           ?? 0
-  const splitPercent    = watch('payment_split_percent') ?? 50
+  const gross        = watch('gross_amount')          ?? 0
+  const netAmount    = watch('amount')                ?? 0
+  const manualInss   = watch('inss_amount')           ?? 0
+  const manualIrrf   = watch('irrf_amount')           ?? 0
+  const paymentType  = watch('payment_type')
+  const splitPercent = watch('payment_split_percent') ?? 50
 
-  const autoInss = taxMode === 'gross_auto' ? calculateINSSBR(grossAmount) : inssAmount
-  const autoIrrf = taxMode === 'gross_auto' ? calculateIRRFBR(grossAmount - autoInss) : irrfAmount
-  const previewNet = taxMode === 'net'
-    ? netAmount
-    : Math.max(0, grossAmount - autoInss - autoIrrf - otherDeductions)
+  const effectiveInss = autoTax ? calculateINSSBR(gross)                     : manualInss
+  const effectiveIrrf = autoTax ? calculateIRRFBR(gross - effectiveInss)     : manualIrrf
+  const otherTotal    = deductions.filter(d => d.enabled).reduce((s, d) => s + (d.amount || 0), 0)
+  const previewNet    = useGross
+    ? Math.max(0, gross - effectiveInss - effectiveIrrf - otherTotal)
+    : netAmount
 
   useEffect(() => {
-    if (open && config) {
+    if (!open) return
+    setStep(1)
+    if (config) {
+      const isGross = config.tax_mode !== 'net'
+      setUseGross(isGross)
+      setAutoTax(config.tax_mode === 'gross_auto')
+      setFixedFirstMode(config.payment_fixed_first_amount != null)
+      // Carrega "outros descontos" agregados no item genérico
+      setDeductions(config.other_deductions > 0
+        ? PRESET_DEDUCTIONS.map(d => d.id === 'out'
+            ? { ...d, enabled: true, amount: config.other_deductions, label: config.other_deductions_label ?? 'Outros' }
+            : d)
+        : PRESET_DEDUCTIONS
+      )
       reset({
         name:                   config.name,
-        tax_mode:               (config.tax_mode as SalaryInput['tax_mode']) ?? 'net',
+        tax_mode:               config.tax_mode as SalaryInput['tax_mode'],
         amount:                 config.tax_mode === 'net' ? config.amount : undefined,
-        gross_amount:           config.gross_amount    ?? undefined,
-        inss_amount:            config.inss_amount,
-        irrf_amount:            config.irrf_amount,
+        gross_amount:           config.gross_amount           ?? undefined,
+        inss_amount:            config.inss_amount            ?? undefined,
+        irrf_amount:            config.irrf_amount            ?? undefined,
         other_deductions:       config.other_deductions,
         other_deductions_label: config.other_deductions_label ?? undefined,
-        payment_type:           config.payment_type as SalaryInput['payment_type'],
-        payment_day:            config.payment_day           ?? undefined,
-        payment_day_2:          config.payment_day_2         ?? undefined,
-        payment_split_percent:  config.payment_split_percent,
-        custom_interval_days:   config.custom_interval_days  ?? undefined,
-        custom_start_date:      config.custom_start_date     ?? undefined,
+        payment_type:           config.payment_type           as SalaryInput['payment_type'],
+        payment_day:            config.payment_day            ?? undefined,
+        payment_day_2:          config.payment_day_2          ?? undefined,
+        payment_split_percent:       config.payment_split_percent,
+        payment_fixed_first_amount:  config.payment_fixed_first_amount ?? undefined,
+        custom_interval_days:        config.custom_interval_days       ?? undefined,
+        custom_start_date:           config.custom_start_date          ?? undefined,
       })
-    } else if (open && !config) {
+    } else {
+      setUseGross(false)
+      setAutoTax(true)
+      setDeductions(PRESET_DEDUCTIONS)
       reset({ name: 'Salário', tax_mode: 'net', payment_type: 'monthly', payment_day: 5, payment_split_percent: 50, other_deductions: 0 })
     }
   }, [open, config, reset])
 
+  // Mantém tax_mode no form em sync com o estado do wizard para que o zodResolver
+  // valide os campos corretos ao submeter (sem isso, handleSubmit aborta silenciosamente)
+  useEffect(() => {
+    setValue('tax_mode', !useGross ? 'net' : autoTax ? 'gross_auto' : 'gross_manual')
+  }, [useGross, autoTax, setValue])
+
+  // Valida apenas os campos do passo 1 antes de avançar
+  async function handleNextStep() {
+    const fields = (
+      !useGross
+        ? ['name', 'amount']
+        : autoTax
+          ? ['name', 'gross_amount']
+          : ['name', 'gross_amount', 'inss_amount', 'irrf_amount']
+    ) as (keyof SalaryInput)[]
+    const valid = await trigger(fields)
+    if (valid) setStep(2)
+  }
+
+  function toggleDeduction(idx: number, enabled: boolean) {
+    setDeductions(prev => prev.map((d, i) => i === idx ? { ...d, enabled } : d))
+  }
+  function setDeductionAmount(idx: number, amount: number) {
+    setDeductions(prev => prev.map((d, i) => i === idx ? { ...d, amount } : d))
+  }
+
   async function onSubmit(data: SalaryInput) {
-    await upsert.mutateAsync(data)
-    onClose()
+    try {
+      const enabled = deductions.filter(d => d.enabled && d.amount > 0)
+      await upsert.mutateAsync({
+        ...data,
+        tax_mode:                    !useGross ? 'net' : autoTax ? 'gross_auto' : 'gross_manual',
+        inss_amount:                 useGross && !autoTax ? data.inss_amount : undefined,
+        irrf_amount:                 useGross && !autoTax ? data.irrf_amount : undefined,
+        other_deductions:            otherTotal,
+        other_deductions_label:      enabled.length > 0 ? enabled.map(d => d.label).join(', ') : null,
+        payment_fixed_first_amount:  fixedFirstMode ? data.payment_fixed_first_amount : null,
+      })
+      onClose()
+    } catch {
+      // erro tratado pelo MutationCache global (toast + log)
+    }
+  }
+
+  function onInvalidSubmit(errs: object) {
+    console.error('[SalaryModal] validação falhou — verifique os campos:', errs)
   }
 
   if (!open) return null
@@ -81,270 +156,303 @@ function SalaryModal({ open, onClose }: { open: boolean; onClose: () => void }) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
       <div className="bg-white rounded-2xl w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
+
+        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-800">Configurar Salário</h2>
+          <div>
+            <h2 className="text-lg font-bold text-gray-800">Configurar Salário</h2>
+            <div className="flex gap-1.5 mt-2">
+              {[1, 2].map(s => (
+                <div key={s} className={`h-1 w-8 rounded-full transition-colors ${step >= s ? 'bg-emerald-500' : 'bg-gray-200'}`} />
+              ))}
+            </div>
+          </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
-          {/* Nome */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nome / Fonte</label>
-            <input
-              {...register('name')}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              placeholder="Ex: Empresa Principal"
-            />
-            {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>}
-          </div>
+        <form onSubmit={handleSubmit(onSubmit, onInvalidSubmit)} className="p-6 space-y-4">
 
-          {/* Modo tributação */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Modo de tributação</label>
-            <select
-              {...register('tax_mode')}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="net">Salário líquido (já descontado)</option>
-              <option value="gross_auto">Salário bruto — calcular INSS + IRRF automaticamente</option>
-              <option value="gross_manual">Salário bruto — informar descontos manualmente</option>
-            </select>
-          </div>
-
-          {/* Líquido */}
-          {taxMode === 'net' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Valor líquido (R$)</label>
-              <input
-                {...register('amount', { valueAsNumber: true })}
-                type="number" step="0.01" min="0"
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                placeholder="0,00"
-              />
-              {errors.amount && <p className="text-xs text-red-500 mt-1">{errors.amount.message}</p>}
-            </div>
-          )}
-
-          {/* Bruto */}
-          {(taxMode === 'gross_auto' || taxMode === 'gross_manual') && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Salário bruto (R$)</label>
-              <input
-                {...register('gross_amount', { valueAsNumber: true })}
-                type="number" step="0.01" min="0"
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                placeholder="0,00"
-              />
-              {errors.gross_amount && <p className="text-xs text-red-500 mt-1">{errors.gross_amount.message}</p>}
-            </div>
-          )}
-
-          {/* Descontos manuais */}
-          {taxMode === 'gross_manual' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">INSS (R$)</label>
-                <input
-                  {...register('inss_amount', { valueAsNumber: true })}
-                  type="number" step="0.01" min="0"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  placeholder="0,00"
-                />
-                {errors.inss_amount && <p className="text-xs text-red-500 mt-1">{errors.inss_amount.message}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">IRRF (R$)</label>
-                <input
-                  {...register('irrf_amount', { valueAsNumber: true })}
-                  type="number" step="0.01" min="0"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  placeholder="0,00"
-                />
-                {errors.irrf_amount && <p className="text-xs text-red-500 mt-1">{errors.irrf_amount.message}</p>}
-              </div>
-            </div>
-          )}
-
-          {/* Outros descontos */}
-          {(taxMode === 'gross_auto' || taxMode === 'gross_manual') && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Outros descontos (R$)</label>
-                <input
-                  {...register('other_deductions', { valueAsNumber: true })}
-                  type="number" step="0.01" min="0"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  placeholder="0,00"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
-                <input
-                  {...register('other_deductions_label')}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  placeholder="Ex: Vale transporte"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Preview auto */}
-          {taxMode === 'gross_auto' && grossAmount > 0 && (
-            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-sm space-y-1.5">
-              <p className="text-xs font-semibold text-emerald-700 mb-2">Estimativa de descontos (tabela 2024)</p>
-              <div className="flex justify-between text-gray-600">
-                <span>INSS</span>
-                <span className="font-medium text-red-500">− {formatCurrency(autoInss)}</span>
-              </div>
-              <div className="flex justify-between text-gray-600">
-                <span>IRRF</span>
-                <span className="font-medium text-red-500">− {formatCurrency(autoIrrf)}</span>
-              </div>
-              {otherDeductions > 0 && (
-                <div className="flex justify-between text-gray-600">
-                  <span>Outros descontos</span>
-                  <span className="font-medium text-red-500">− {formatCurrency(otherDeductions)}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-semibold text-gray-800 pt-1.5 border-t border-emerald-200">
-                <span>Líquido estimado</span>
-                <span className="text-emerald-700">{formatCurrency(previewNet)}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Preview manual */}
-          {taxMode === 'gross_manual' && grossAmount > 0 && (
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm space-y-1.5">
-              <div className="flex justify-between text-gray-600">
-                <span>INSS</span>
-                <span className="font-medium text-red-500">− {formatCurrency(inssAmount)}</span>
-              </div>
-              <div className="flex justify-between text-gray-600">
-                <span>IRRF</span>
-                <span className="font-medium text-red-500">− {formatCurrency(irrfAmount)}</span>
-              </div>
-              {otherDeductions > 0 && (
-                <div className="flex justify-between text-gray-600">
-                  <span>Outros descontos</span>
-                  <span className="font-medium text-red-500">− {formatCurrency(otherDeductions)}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-semibold text-gray-800 pt-1.5 border-t border-blue-200">
-                <span>Líquido</span>
-                <span className="text-blue-700">{formatCurrency(previewNet)}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Tipo de pagamento */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de pagamento</label>
-            <select
-              {...register('payment_type')}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            >
-              <option value="monthly">Mensal (uma vez por mês)</option>
-              <option value="biweekly">Quinzenal (duas vezes por mês)</option>
-              <option value="custom">Personalizado (intervalo em dias)</option>
-            </select>
-          </div>
-
-          {(paymentType === 'monthly' || paymentType === 'biweekly') && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {paymentType === 'biweekly' ? '1º dia de pagamento' : 'Dia de pagamento'}
-              </label>
-              <input
-                {...register('payment_day', { valueAsNumber: true })}
-                type="number" min="1" max="31"
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                placeholder="Ex: 5"
-              />
-              {errors.payment_day && <p className="text-xs text-red-500 mt-1">{errors.payment_day.message}</p>}
-            </div>
-          )}
-
-          {paymentType === 'biweekly' && (
+          {/* ── PASSO 1: Salário ─────────────────────────────────────────── */}
+          {step === 1 && (
             <>
+              {/* Nome */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">2º dia de pagamento</label>
-                <input
-                  {...register('payment_day_2', { valueAsNumber: true })}
-                  type="number" min="1" max="31"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  placeholder="Ex: 20"
-                />
-                {errors.payment_day_2 && <p className="text-xs text-red-500 mt-1">{errors.payment_day_2.message}</p>}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nome / Fonte</label>
+                <input {...register('name')} className={INPUT_CLS} placeholder="Ex: Empresa Principal" />
+                {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>}
               </div>
 
+              {/* Escolha do caminho */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Divisão quinzenal — 1º:{' '}
-                  <span className="text-emerald-600 font-bold">{splitPercent}%</span>
-                  {' '}/ 2º:{' '}
-                  <span className="text-emerald-600 font-bold">{100 - splitPercent}%</span>
-                </label>
-                <input
-                  {...register('payment_split_percent', { valueAsNumber: true })}
-                  type="range" min="1" max="99"
-                  className="w-full accent-emerald-500"
-                />
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
-                  <span>1º pagamento: {formatCurrency(previewNet * splitPercent / 100)}</span>
-                  <span>2º pagamento: {formatCurrency(previewNet * (100 - splitPercent) / 100)}</span>
+                <p className="text-sm font-medium text-gray-700 mb-2">O que você sabe sobre seu salário?</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { val: false, title: 'Sei o valor líquido', sub: 'O que cai na conta' },
+                    { val: true,  title: 'Tenho o contracheque', sub: 'Valor bruto + descontos' },
+                  ].map(({ val, title, sub }) => (
+                    <button
+                      key={String(val)}
+                      type="button"
+                      onClick={() => {
+                        setUseGross(val)
+                        // Limpa o campo do caminho oposto para evitar NaN residual no zodResolver
+                        if (val) setValue('amount',       undefined as never)
+                        else     setValue('gross_amount', undefined as never)
+                      }}
+                      className={`p-3.5 rounded-xl border-2 text-left transition-all ${useGross === val ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}
+                    >
+                      <p className={`text-sm font-semibold ${useGross === val ? 'text-emerald-700' : 'text-gray-700'}`}>{title}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+                    </button>
+                  ))}
                 </div>
+              </div>
+
+              {/* Caminho: líquido */}
+              {!useGross && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Valor líquido (R$)</label>
+                  <input {...register('amount', { valueAsNumber: true })} type="number" step="0.01" min="0" className={INPUT_CLS} placeholder="0,00" />
+                  {errors.amount && <p className="text-xs text-red-500 mt-1">{errors.amount.message}</p>}
+                </div>
+              )}
+
+              {/* Caminho: bruto */}
+              {useGross && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Salário bruto (R$)</label>
+                    <input {...register('gross_amount', { valueAsNumber: true })} type="number" step="0.01" min="0" className={INPUT_CLS} placeholder="0,00" />
+                    {errors.gross_amount && <p className="text-xs text-red-500 mt-1">{errors.gross_amount.message}</p>}
+                  </div>
+
+                  {/* Toggle CLT automático */}
+                  <label className={`flex items-start gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all ${autoTax ? 'border-emerald-400 bg-emerald-50' : 'border-gray-200'}`}>
+                    <input type="checkbox" checked={autoTax} onChange={e => setAutoTax(e.target.checked)} className="mt-0.5 accent-emerald-500" />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">Calcular INSS e IRRF automaticamente</p>
+                      <p className="text-xs text-gray-400">Recomendado para CLT · tabelas 2024</p>
+                    </div>
+                  </label>
+
+                  {/* INSS / IRRF manuais */}
+                  {!autoTax && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">INSS (R$)</label>
+                        <input {...register('inss_amount', { valueAsNumber: true })} type="number" step="0.01" min="0" className={INPUT_CLS} placeholder="0,00" />
+                        {errors.inss_amount && <p className="text-xs text-red-500 mt-1">{errors.inss_amount.message}</p>}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">IRRF (R$)</label>
+                        <input {...register('irrf_amount', { valueAsNumber: true })} type="number" step="0.01" min="0" className={INPUT_CLS} placeholder="0,00" />
+                        {errors.irrf_amount && <p className="text-xs text-red-500 mt-1">{errors.irrf_amount.message}</p>}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Descontos comuns */}
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-2">Outros descontos da folha</p>
+                    <div className="space-y-2">
+                      {deductions.map((d, i) => (
+                        <div key={d.id} className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all ${d.enabled ? 'border-gray-300 bg-gray-50' : 'border-transparent'}`}>
+                          <input
+                            type="checkbox"
+                            checked={d.enabled}
+                            onChange={e => toggleDeduction(i, e.target.checked)}
+                            className="accent-emerald-500 flex-shrink-0"
+                          />
+                          <span className="text-sm text-gray-700 flex-1">{d.label}</span>
+                          {d.enabled && (
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={d.amount || ''}
+                              onChange={e => setDeductionAmount(i, parseFloat(e.target.value) || 0)}
+                              className="w-28 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-right"
+                              placeholder="0,00"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Preview */}
+                  {gross > 0 && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-sm space-y-1.5">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Resumo do salário</p>
+                      <div className="flex justify-between text-gray-600">
+                        <span>Bruto</span>
+                        <span className="font-medium">{formatCurrency(gross)}</span>
+                      </div>
+                      <div className="flex justify-between text-gray-500">
+                        <span>INSS</span>
+                        <span className="text-red-400">− {formatCurrency(effectiveInss)}</span>
+                      </div>
+                      <div className="flex justify-between text-gray-500">
+                        <span>IRRF</span>
+                        <span className="text-red-400">− {formatCurrency(effectiveIrrf)}</span>
+                      </div>
+                      {otherTotal > 0 && (
+                        <div className="flex justify-between text-gray-500">
+                          <span>Outros descontos</span>
+                          <span className="text-red-400">− {formatCurrency(otherTotal)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-bold text-gray-800 pt-2 border-t border-gray-200">
+                        <span>Líquido</span>
+                        <span className="text-emerald-600">{formatCurrency(previewNet)}</span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                {config && (
+                  <button type="button" onClick={() => { deleteSalary.mutate(config.id); onClose() }}
+                    className="px-4 py-2.5 border border-red-200 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50">
+                    Remover
+                  </button>
+                )}
+                <button type="button" onClick={onClose} className="flex-1 border border-gray-200 text-gray-700 px-4 py-2.5 rounded-xl font-medium hover:bg-gray-50 text-sm">
+                  Cancelar
+                </button>
+                <button type="button" onClick={handleNextStep}
+                  className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm">
+                  Próximo →
+                </button>
               </div>
             </>
           )}
 
-          {paymentType === 'custom' && (
+          {/* ── PASSO 2: Recebimento ─────────────────────────────────────── */}
+          {step === 2 && (
             <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Intervalo (dias)</label>
-                <input
-                  {...register('custom_interval_days', { valueAsNumber: true })}
-                  type="number" min="1"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  placeholder="Ex: 30"
-                />
-                {errors.custom_interval_days && <p className="text-xs text-red-500 mt-1">{errors.custom_interval_days.message}</p>}
+              <p className="text-sm font-semibold text-gray-800">Quando você recebe?</p>
+
+              {/* Cards de tipo de pagamento */}
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { val: 'monthly',  label: 'Mensal',     sub: '1× por mês'   },
+                  { val: 'biweekly', label: 'Quinzenal',  sub: '2× por mês'   },
+                  { val: 'custom',   label: 'Outro',      sub: 'Personalizado' },
+                ] as const).map(({ val, label, sub }) => (
+                  <label key={val} className={`p-3 rounded-xl border-2 cursor-pointer text-center transition-all ${paymentType === val ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <input type="radio" value={val} className="hidden" {...register('payment_type')} />
+                    <p className={`text-sm font-semibold ${paymentType === val ? 'text-emerald-700' : 'text-gray-700'}`}>{label}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+                  </label>
+                ))}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Data do primeiro pagamento</label>
-                <input
-                  {...register('custom_start_date')}
-                  type="date"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                {errors.custom_start_date && <p className="text-xs text-red-500 mt-1">{errors.custom_start_date.message}</p>}
+
+              {(paymentType === 'monthly' || paymentType === 'biweekly') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {paymentType === 'biweekly' ? '1º dia de pagamento' : 'Dia de pagamento'}
+                  </label>
+                  <input {...register('payment_day', { valueAsNumber: true })} type="number" min="1" max="31" className={INPUT_CLS} placeholder="Ex: 5" />
+                  {errors.payment_day && <p className="text-xs text-red-500 mt-1">{errors.payment_day.message}</p>}
+                </div>
+              )}
+
+              {paymentType === 'biweekly' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">2º dia de pagamento</label>
+                    <input {...register('payment_day_2', { valueAsNumber: true })} type="number" min="1" max="31" className={INPUT_CLS} placeholder="Ex: 20" />
+                    {errors.payment_day_2 && <p className="text-xs text-red-500 mt-1">{errors.payment_day_2.message}</p>}
+                  </div>
+
+                  {/* Modo de divisão */}
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-2">Como é dividido o pagamento?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { val: false, title: 'Por percentual', sub: 'Ex: 40% / 60%' },
+                        { val: true,  title: 'Valor fixo no 1º', sub: 'Ex: adiantamento fixo' },
+                      ].map(({ val, title, sub }) => (
+                        <button key={String(val)} type="button" onClick={() => setFixedFirstMode(val)}
+                          className={`p-3 rounded-xl border-2 text-left transition-all ${fixedFirstMode === val ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                          <p className={`text-sm font-semibold ${fixedFirstMode === val ? 'text-emerald-700' : 'text-gray-700'}`}>{title}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Percentual */}
+                  {!fixedFirstMode && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Divisão — 1º: <span className="text-emerald-600 font-bold">{splitPercent}%</span> / 2º: <span className="text-emerald-600 font-bold">{100 - splitPercent}%</span>
+                      </label>
+                      <input {...register('payment_split_percent', { valueAsNumber: true })} type="range" min="1" max="99" className="w-full accent-emerald-500" />
+                      <div className="flex justify-between text-xs text-gray-400 mt-1">
+                        <span>1º: {formatCurrency(previewNet * splitPercent / 100)}</span>
+                        <span>2º: {formatCurrency(previewNet * (100 - splitPercent) / 100)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Valor fixo no 1º pagamento */}
+                  {fixedFirstMode && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Valor fixo do 1º pagamento (R$)</label>
+                      <input
+                        {...register('payment_fixed_first_amount', { valueAsNumber: true })}
+                        type="number" step="0.01" min="0"
+                        className={INPUT_CLS}
+                        placeholder="Ex: 1000,00"
+                      />
+                      {errors.payment_fixed_first_amount && <p className="text-xs text-red-500 mt-1">{errors.payment_fixed_first_amount.message}</p>}
+                      {(() => {
+                        const fixedVal = watch('payment_fixed_first_amount') ?? 0
+                        const second   = Math.max(0, previewNet - fixedVal)
+                        return fixedVal > 0 ? (
+                          <div className="flex justify-between text-xs text-gray-400 mt-1.5">
+                            <span>1º (dia {watch('payment_day') ?? '?'}): {formatCurrency(fixedVal)}</span>
+                            <span>2º (dia {watch('payment_day_2') ?? '?'}): {formatCurrency(second)} + variáveis</span>
+                          </div>
+                        ) : null
+                      })()}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {paymentType === 'custom' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Intervalo (dias)</label>
+                    <input {...register('custom_interval_days', { valueAsNumber: true })} type="number" min="1" className={INPUT_CLS} placeholder="Ex: 30" />
+                    {errors.custom_interval_days && <p className="text-xs text-red-500 mt-1">{errors.custom_interval_days.message}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Data do primeiro pagamento</label>
+                    <input {...register('custom_start_date')} type="date" className={INPUT_CLS} />
+                    {errors.custom_start_date && <p className="text-xs text-red-500 mt-1">{errors.custom_start_date.message}</p>}
+                  </div>
+                </>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setStep(1)} className="px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 text-sm">
+                  ← Voltar
+                </button>
+                <button type="submit" disabled={upsert.isPending}
+                  className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2.5 rounded-xl font-medium disabled:opacity-60 text-sm">
+                  {upsert.isPending ? 'Salvando...' : 'Salvar'}
+                </button>
               </div>
             </>
           )}
 
-          <div className="flex gap-3 pt-2">
-            {config && (
-              <button
-                type="button"
-                onClick={() => { deleteSalary.mutate(config.id); onClose() }}
-                className="px-4 py-2.5 border border-red-200 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50"
-              >
-                Remover
-              </button>
-            )}
-            <button type="button" onClick={onClose} className="flex-1 border border-gray-200 text-gray-700 px-4 py-2.5 rounded-xl font-medium hover:bg-gray-50 text-sm">
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={upsert.isPending}
-              className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2.5 rounded-xl font-medium disabled:opacity-60 text-sm"
-            >
-              {upsert.isPending ? 'Salvando...' : 'Salvar'}
-            </button>
-          </div>
         </form>
       </div>
     </div>
@@ -455,6 +563,31 @@ function SalaryWidget() {
             </span>
           )}
         </div>
+
+        {/* Divisão quinzenal */}
+        {config.payment_type === 'biweekly' && config.payment_day && config.payment_day_2 && (
+          <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 gap-2">
+            <div className="bg-gray-50 rounded-xl px-3 py-2">
+              <p className="text-xs text-gray-400">Dia {config.payment_day}</p>
+              <p className="text-sm font-bold text-gray-700">
+                {config.payment_fixed_first_amount != null
+                  ? formatCurrency(config.payment_fixed_first_amount)
+                  : formatCurrency(status.remaining * config.payment_split_percent / 100)}
+              </p>
+              {config.payment_fixed_first_amount != null && (
+                <p className="text-xs text-gray-400">fixo</p>
+              )}
+            </div>
+            <div className="bg-gray-50 rounded-xl px-3 py-2">
+              <p className="text-xs text-gray-400">Dia {config.payment_day_2}</p>
+              <p className="text-sm font-bold text-gray-700">
+                {config.payment_fixed_first_amount != null
+                  ? `${formatCurrency(Math.max(0, status.remaining - config.payment_fixed_first_amount))} + variáveis`
+                  : formatCurrency(status.remaining * (100 - config.payment_split_percent) / 100)}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
       <SalaryModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </>
