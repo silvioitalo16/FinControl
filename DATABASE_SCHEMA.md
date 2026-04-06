@@ -1,51 +1,64 @@
-# FinControl — Database Schema Reference
+# FinControl - Database Schema Reference
 
-> PostgreSQL 16 + Supabase RLS | Versão 1.0
+> Estado atual do projeto em abril de 2026.
 
-## Diagrama de Relacionamentos
+## Visão geral
 
-```
-auth.users (Supabase)
-    │
+O banco do FinControl roda no Supabase/PostgreSQL e usa RLS para isolamento por usuário.
+
+Fontes de verdade do schema:
+- `backend/supabase/migrations/*.sql`: histórico SQL versionado
+- `backend/supabase/prisma/schema.prisma`: espelho do schema para type generation e acesso no backend
+- projeto Supabase ativo: estado efetivamente aplicado no banco
+
+Atualmente o diretório de migrations contém:
+- `20260402000000_initial_schema.sql`
+- `20260402000001_add_salary_config.sql`
+- `20260402000002_salary_tax_and_split.sql`
+- `20260406000000_salary_fixed_first_payment.sql`
+- `20260406190000_reconcile_salary_schema.sql`
+
+---
+
+## Relacionamentos principais
+
+```text
+auth.users
     └── profiles (1:1)
-            │
-            ├── transactions (1:N) ──── categories (N:1) ──── categories
-            │       └── transactions (parent_id, self-ref)
-            │
-            ├── goals (1:N)
-            │       └── goal_contributions (1:N)
-            │
-            ├── budgets (1:N) ──────── categories (N:1)
-            │
-            ├── notifications (1:N)
-            │
-            ├── user_settings (1:1)
-            │
-            └── audit_logs (1:N)
+         ├── categories (1:N customizadas; sistema usa user_id NULL)
+         ├── transactions (1:N)
+         │   └── transactions.parent_id (self reference)
+         ├── goals (1:N)
+         │   └── goal_contributions (1:N)
+         ├── budgets (1:N)
+         ├── notifications (1:N)
+         ├── user_settings (1:1)
+         ├── audit_logs (1:N)
+         └── salary_configs (1:N, com apenas uma ativa por usuário)
 ```
 
-## Regras de Integridade
+---
 
-| Regra | Implementação |
+## Regras importantes
+
+| Regra | Implementação atual |
 |---|---|
-| Usuário vê só seus dados | RLS policy em todas as tabelas |
-| amount sempre positivo | CHECK (amount > 0) |
-| Tipo restrito | CHECK com enum values |
-| Soft delete em transações | deleted_at TIMESTAMPTZ |
-| updated_at automático | Trigger em todas as tabelas |
-| Budget único por mês/categoria | UNIQUE(user_id, category_id, month) |
+| Usuário vê apenas seus próprios dados | RLS em todas as tabelas de domínio |
+| `amount` sempre positivo | `CHECK (amount > 0)` em tabelas financeiras |
+| Soft delete de transações | `deleted_at TIMESTAMPTZ` |
+| `updated_at` automático | trigger `update_updated_at()` |
+| Um orçamento por categoria/mês | `UNIQUE(user_id, category_id, month)` |
+| Apenas uma configuração salarial ativa | índice parcial único em `salary_configs(user_id)` quando `active = true` |
 
-## Índices de Performance
+---
+
+## Índices principais
 
 ```sql
--- Queries mais frequentes otimizadas:
-
--- Dashboard: saldo do mês
 CREATE INDEX idx_transactions_user_date
   ON transactions(user_id, date DESC)
   WHERE deleted_at IS NULL;
 
--- Filtros de transações
 CREATE INDEX idx_transactions_user_type
   ON transactions(user_id, type)
   WHERE deleted_at IS NULL;
@@ -54,286 +67,278 @@ CREATE INDEX idx_transactions_user_category
   ON transactions(user_id, category_id)
   WHERE deleted_at IS NULL;
 
--- Orçamentos do mês
-CREATE INDEX idx_budgets_user_month
-  ON budgets(user_id, month);
-
--- Objetivos ativos
 CREATE INDEX idx_goals_user_status
   ON goals(user_id, status);
 
--- Notificações não lidas
+CREATE INDEX idx_budgets_user_month
+  ON budgets(user_id, month);
+
 CREATE INDEX idx_notifications_user_unread
   ON notifications(user_id, is_read, created_at DESC)
   WHERE is_read = FALSE;
-```
 
-## Trigger: updated_at automático
+CREATE UNIQUE INDEX salary_configs_one_active
+  ON salary_configs(user_id)
+  WHERE active = TRUE;
 
-```sql
-CREATE OR REPLACE FUNCTION update_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Aplicar em todas as tabelas mutáveis:
-CREATE TRIGGER set_updated_at
-  BEFORE UPDATE ON profiles
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
--- (repetir para transactions, goals, budgets, user_settings)
-```
-
-## Trigger: recalcular spent_amount em budgets
-
-```sql
-CREATE OR REPLACE FUNCTION recalculate_budget_spent()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_month DATE;
-  v_category_id UUID;
-  v_user_id UUID;
-BEGIN
-  -- Funciona para INSERT, UPDATE e DELETE
-  IF TG_OP = 'DELETE' THEN
-    v_month := DATE_TRUNC('month', OLD.date);
-    v_category_id := OLD.category_id;
-    v_user_id := OLD.user_id;
-  ELSE
-    v_month := DATE_TRUNC('month', NEW.date);
-    v_category_id := NEW.category_id;
-    v_user_id := NEW.user_id;
-  END IF;
-
-  UPDATE budgets
-  SET spent_amount = (
-    SELECT COALESCE(SUM(amount), 0)
-    FROM transactions
-    WHERE user_id = v_user_id
-      AND category_id = v_category_id
-      AND type = 'expense'
-      AND DATE_TRUNC('month', date) = v_month
-      AND deleted_at IS NULL
-  )
-  WHERE user_id = v_user_id
-    AND category_id = v_category_id
-    AND month = v_month;
-
-  RETURN COALESCE(NEW, OLD);
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE TRIGGER trigger_recalculate_budget
-  AFTER INSERT OR UPDATE OR DELETE ON transactions
-  FOR EACH ROW EXECUTE FUNCTION recalculate_budget_spent();
-```
-
-## Trigger: completar objetivo automaticamente
-
-```sql
-CREATE OR REPLACE FUNCTION check_goal_completion()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Se aporte levou ao 100%, marcar como completed
-  IF NEW.current_amount >= NEW.target_amount AND OLD.current_amount < OLD.target_amount THEN
-    NEW.status = 'completed';
-    NEW.current_amount = NEW.target_amount;  -- Não ultrapassar
-
-    -- Gerar notificação
-    INSERT INTO notifications (user_id, type, title, message, metadata)
-    VALUES (
-      NEW.user_id,
-      'goal',
-      'Meta concluída!',
-      'Parabéns! Você atingiu sua meta "' || NEW.name || '".',
-      jsonb_build_object('goal_id', NEW.id)
-    );
-  END IF;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE TRIGGER trigger_check_goal_completion
-  BEFORE UPDATE OF current_amount ON goals
-  FOR EACH ROW EXECUTE FUNCTION check_goal_completion();
-```
-
-## Seed: Categorias Padrão do Sistema
-
-```sql
-INSERT INTO categories (id, user_id, name, color, icon, type, is_default) VALUES
-  (gen_random_uuid(), NULL, 'Alimentação',  '#10b981', 'UtensilsCrossed', 'expense', TRUE),
-  (gen_random_uuid(), NULL, 'Transporte',   '#3b82f6', 'Car',             'expense', TRUE),
-  (gen_random_uuid(), NULL, 'Moradia',      '#8b5cf6', 'Home',            'expense', TRUE),
-  (gen_random_uuid(), NULL, 'Lazer',        '#f59e0b', 'Gamepad2',        'expense', TRUE),
-  (gen_random_uuid(), NULL, 'Saúde',        '#ec4899', 'Heart',           'expense', TRUE),
-  (gen_random_uuid(), NULL, 'Educação',     '#06b6d4', 'BookOpen',        'expense', TRUE),
-  (gen_random_uuid(), NULL, 'Vestuário',    '#f97316', 'Shirt',           'expense', TRUE),
-  (gen_random_uuid(), NULL, 'Outros',       '#6b7280', 'Package',         'both',    TRUE),
-  (gen_random_uuid(), NULL, 'Salário',      '#10b981', 'Briefcase',       'income',  TRUE),
-  (gen_random_uuid(), NULL, 'Freelance',    '#14b8a6', 'Laptop',          'income',  TRUE),
-  (gen_random_uuid(), NULL, 'Investimentos',''#6366f1', 'TrendingUp',      'income',  TRUE),
-  (gen_random_uuid(), NULL, 'Presente',     '#f59e0b', 'Gift',            'income',  TRUE);
-```
-
-## RLS Policies Completas
-
-```sql
--- ============================================================
--- PROFILES
--- ============================================================
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "profiles_select_own" ON profiles
-  FOR SELECT USING (id = auth.uid());
-
-CREATE POLICY "profiles_insert_own" ON profiles
-  FOR INSERT WITH CHECK (id = auth.uid());
-
-CREATE POLICY "profiles_update_own" ON profiles
-  FOR UPDATE USING (id = auth.uid()) WITH CHECK (id = auth.uid());
-
-
--- ============================================================
--- CATEGORIES
--- ============================================================
-ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
-
--- Pode ver: categorias globais (user_id IS NULL) + suas próprias
-CREATE POLICY "categories_select" ON categories
-  FOR SELECT USING (user_id IS NULL OR user_id = auth.uid());
-
-CREATE POLICY "categories_insert_own" ON categories
-  FOR INSERT WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "categories_update_own" ON categories
-  FOR UPDATE USING (user_id = auth.uid() AND is_default = FALSE)
-  WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "categories_delete_own" ON categories
-  FOR DELETE USING (user_id = auth.uid() AND is_default = FALSE);
-
-
--- ============================================================
--- TRANSACTIONS
--- ============================================================
-ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "transactions_select_own" ON transactions
-  FOR SELECT USING (user_id = auth.uid() AND deleted_at IS NULL);
-
-CREATE POLICY "transactions_insert_own" ON transactions
-  FOR INSERT WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "transactions_update_own" ON transactions
-  FOR UPDATE USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid());
-
--- Sem DELETE real via API (só soft delete via UPDATE)
-
-
--- ============================================================
--- GOALS
--- ============================================================
-ALTER TABLE goals ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "goals_select_own" ON goals
-  FOR SELECT USING (user_id = auth.uid());
-
-CREATE POLICY "goals_insert_own" ON goals
-  FOR INSERT WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "goals_update_own" ON goals
-  FOR UPDATE USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "goals_delete_own" ON goals
-  FOR DELETE USING (user_id = auth.uid());
-
-
--- ============================================================
--- GOAL_CONTRIBUTIONS
--- ============================================================
-ALTER TABLE goal_contributions ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "goal_contributions_select_own" ON goal_contributions
-  FOR SELECT USING (user_id = auth.uid());
-
-CREATE POLICY "goal_contributions_insert_own" ON goal_contributions
-  FOR INSERT WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "goal_contributions_delete_own" ON goal_contributions
-  FOR DELETE USING (user_id = auth.uid());
-
-
--- ============================================================
--- BUDGETS
--- ============================================================
-ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "budgets_select_own" ON budgets
-  FOR SELECT USING (user_id = auth.uid());
-
-CREATE POLICY "budgets_insert_own" ON budgets
-  FOR INSERT WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "budgets_update_own" ON budgets
-  FOR UPDATE USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "budgets_delete_own" ON budgets
-  FOR DELETE USING (user_id = auth.uid());
-
-
--- ============================================================
--- NOTIFICATIONS
--- ============================================================
-ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "notifications_select_own" ON notifications
-  FOR SELECT USING (user_id = auth.uid());
-
--- INSERT apenas via triggers (SECURITY DEFINER) ou Edge Functions
--- Usuário não insere notificações diretamente
-
-CREATE POLICY "notifications_update_own" ON notifications
-  FOR UPDATE USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid());  -- Apenas marcar como lida
-
-CREATE POLICY "notifications_delete_own" ON notifications
-  FOR DELETE USING (user_id = auth.uid());
-
-
--- ============================================================
--- USER_SETTINGS
--- ============================================================
-ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "user_settings_select_own" ON user_settings
-  FOR SELECT USING (user_id = auth.uid());
-
-CREATE POLICY "user_settings_insert_own" ON user_settings
-  FOR INSERT WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "user_settings_update_own" ON user_settings
-  FOR UPDATE USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid());
-
-
--- ============================================================
--- AUDIT_LOGS (append-only: sem UPDATE, sem DELETE)
--- ============================================================
-ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
-
--- Usuário pode ver seus próprios logs, mas não criar via API direta
-CREATE POLICY "audit_logs_select_own" ON audit_logs
-  FOR SELECT USING (user_id = auth.uid());
--- INSERT apenas via Edge Functions com SERVICE_ROLE
+CREATE INDEX idx_salary_configs_user
+  ON salary_configs(user_id, active);
 ```
 
 ---
 
-*FinControl Database Schema v1.0 — Abril 2026*
+## Tabelas atuais
+
+### `profiles`
+
+```sql
+id          UUID PK REFERENCES auth.users(id)
+full_name   TEXT NOT NULL DEFAULT ''
+avatar_url  TEXT
+phone       TEXT
+birth_date  DATE
+location    TEXT
+plan        TEXT NOT NULL DEFAULT 'free'
+created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+```
+
+### `categories`
+
+```sql
+id          UUID PK DEFAULT gen_random_uuid()
+user_id     UUID NULL REFERENCES profiles(id)
+name        TEXT NOT NULL
+color       TEXT NOT NULL DEFAULT '#6b7280'
+icon        TEXT NOT NULL DEFAULT 'Package'
+type        TEXT NOT NULL CHECK (type IN ('income','expense','both'))
+is_default  BOOLEAN NOT NULL DEFAULT FALSE
+created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+```
+
+### `transactions`
+
+```sql
+id                  UUID PK DEFAULT gen_random_uuid()
+user_id             UUID NOT NULL REFERENCES profiles(id)
+category_id         UUID NOT NULL REFERENCES categories(id)
+type                TEXT NOT NULL CHECK (type IN ('income','expense'))
+amount              NUMERIC(12,2) NOT NULL CHECK (amount > 0)
+description         TEXT NOT NULL DEFAULT ''
+notes               TEXT
+date                DATE NOT NULL
+is_recurring        BOOLEAN NOT NULL DEFAULT FALSE
+recurring_interval  TEXT CHECK (recurring_interval IN ('weekly','monthly','yearly'))
+recurring_end_date  DATE
+parent_id           UUID REFERENCES transactions(id)
+deleted_at          TIMESTAMPTZ
+created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+```
+
+### `goals`
+
+```sql
+id              UUID PK DEFAULT gen_random_uuid()
+user_id         UUID NOT NULL REFERENCES profiles(id)
+name            TEXT NOT NULL
+target_amount   NUMERIC(12,2) NOT NULL CHECK (target_amount > 0)
+current_amount  NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (current_amount >= 0)
+deadline        DATE
+color           TEXT NOT NULL DEFAULT '#10b981'
+icon            TEXT DEFAULT 'Target'
+status          TEXT NOT NULL DEFAULT 'active'
+created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+```
+
+Valores usados hoje para `status`:
+- `active`
+- `completed`
+- `expired`
+- `cancelled`
+
+### `goal_contributions`
+
+```sql
+id          UUID PK DEFAULT gen_random_uuid()
+goal_id     UUID NOT NULL REFERENCES goals(id) ON DELETE CASCADE
+user_id     UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE
+amount      NUMERIC(12,2) NOT NULL CHECK (amount > 0)
+notes       TEXT
+date        DATE NOT NULL DEFAULT CURRENT_DATE
+created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+```
+
+### `budgets`
+
+```sql
+id              UUID PK DEFAULT gen_random_uuid()
+user_id         UUID NOT NULL REFERENCES profiles(id)
+category_id     UUID NOT NULL REFERENCES categories(id)
+month           DATE NOT NULL
+planned_amount  NUMERIC(12,2) NOT NULL CHECK (planned_amount > 0)
+spent_amount    NUMERIC(12,2) NOT NULL DEFAULT 0
+alert_sent_80   BOOLEAN NOT NULL DEFAULT FALSE
+alert_sent_100  BOOLEAN NOT NULL DEFAULT FALSE
+created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+UNIQUE(user_id, category_id, month)
+```
+
+### `notifications`
+
+```sql
+id          UUID PK DEFAULT gen_random_uuid()
+user_id     UUID NOT NULL REFERENCES profiles(id)
+type        TEXT NOT NULL
+title       TEXT NOT NULL
+message     TEXT NOT NULL
+metadata    JSONB
+is_read     BOOLEAN NOT NULL DEFAULT FALSE
+created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+```
+
+Tipos consumidos atualmente pelo frontend:
+- `success`
+- `warning`
+- `info`
+- `goal`
+- `alert`
+
+### `user_settings`
+
+```sql
+id                    UUID PK DEFAULT gen_random_uuid()
+user_id               UUID NOT NULL UNIQUE REFERENCES profiles(id)
+push_notifications    BOOLEAN NOT NULL DEFAULT TRUE
+email_notifications   BOOLEAN NOT NULL DEFAULT TRUE
+transaction_alerts    BOOLEAN NOT NULL DEFAULT TRUE
+budget_alerts         BOOLEAN NOT NULL DEFAULT TRUE
+goal_alerts           BOOLEAN NOT NULL DEFAULT TRUE
+dark_mode             BOOLEAN NOT NULL DEFAULT FALSE
+language              TEXT NOT NULL DEFAULT 'pt-BR'
+two_factor_enabled    BOOLEAN NOT NULL DEFAULT FALSE
+two_factor_secret     TEXT
+created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+```
+
+### `audit_logs`
+
+```sql
+id          UUID PK DEFAULT gen_random_uuid()
+user_id     UUID NOT NULL REFERENCES profiles(id)
+action      TEXT NOT NULL
+metadata    JSONB
+ip_address  INET
+user_agent  TEXT
+created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+```
+
+### `salary_configs`
+
+```sql
+id                         UUID PK DEFAULT gen_random_uuid()
+user_id                    UUID NOT NULL REFERENCES profiles(id)
+name                       TEXT NOT NULL DEFAULT 'Salário'
+active                     BOOLEAN NOT NULL DEFAULT TRUE
+amount                     NUMERIC(12,2) NOT NULL
+tax_mode                   TEXT NOT NULL DEFAULT 'net'
+gross_amount               NUMERIC(12,2)
+inss_amount                NUMERIC(12,2) NOT NULL DEFAULT 0
+irrf_amount                NUMERIC(12,2) NOT NULL DEFAULT 0
+other_deductions           NUMERIC(12,2) NOT NULL DEFAULT 0
+other_deductions_label     TEXT
+payment_type               TEXT NOT NULL
+payment_day                INTEGER
+payment_day_2              INTEGER
+payment_split_percent      INTEGER NOT NULL DEFAULT 50
+payment_fixed_first_amount NUMERIC(12,2)
+custom_interval_days       INTEGER
+custom_start_date          DATE
+created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
+updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
+```
+
+Valores usados hoje:
+- `tax_mode`: `net`, `gross_auto`, `gross_manual`
+- `payment_type`: `monthly`, `biweekly`, `custom`
+
+---
+
+## Triggers e funções relevantes
+
+### `update_updated_at()`
+
+Atualiza `updated_at` automaticamente nas tabelas mutáveis.
+
+### `handle_new_user()`
+
+Cria um registro em `profiles` quando um usuário novo entra em `auth.users`.
+
+### `handle_new_profile()`
+
+Cria `user_settings` automaticamente quando um `profile` é criado.
+
+### `check_goal_completion()`
+
+Marca metas como `completed` quando o valor atinge 100% e gera notificação.
+
+### `recalculate_budget_spent()`
+
+Recalcula `spent_amount` dos budgets a partir das transações e dispara alertas de orçamento.
+
+### `get_salary_status()`
+
+RPC usada pela tela de planejamento salarial.
+
+Ela retorna, entre outros campos:
+- `config_id`
+- `name`
+- `salary_amount`
+- `gross_amount`
+- `inss_amount`
+- `irrf_amount`
+- `other_deductions`
+- `other_deductions_label`
+- `tax_mode`
+- `payment_type`
+- `payment_split_percent`
+- `period_start`
+- `period_end`
+- `total_spent`
+- `remaining`
+
+---
+
+## Seed de categorias padrão
+
+O projeto usa categorias globais (`user_id = NULL`) para a base inicial. Exemplos:
+- Alimentação
+- Transporte
+- Moradia
+- Lazer
+- Saúde
+- Educação
+- Vestuário
+- Outros
+- Salário
+- Freelance
+- Investimentos
+- Presente
+
+---
+
+## RLS
+
+Todas as tabelas de domínio usam Row Level Security.
+
+Padrão aplicado:
+- leitura restrita ao `auth.uid()` do usuário
+- escrita restrita aos próprios registros
+- categorias globais acessíveis via `user_id IS NULL`
+- `audit_logs` é append-only do ponto de vista da aplicação
+
+As policies SQL completas continuam versionadas nas migrations em `backend/supabase/migrations/`.
