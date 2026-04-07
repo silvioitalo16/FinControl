@@ -18,7 +18,7 @@ O FinControl é uma aplicação web de controle financeiro multiusuário baseada
 
 Arquitetura atual:
 - frontend React/Vite consumindo Supabase diretamente para dados de domínio
-- backend Express para health check, ingestão de logs do frontend e utilitários internos
+- backend Express para health check, ingestão de logs do frontend, auth transacional e utilitários internos
 - PostgreSQL no Supabase com RLS, triggers e RPCs para parte da lógica de negócio
 - Prisma no backend como espelho do schema e client tipado, com migrations SQL versionadas separadamente
 
@@ -198,11 +198,14 @@ Principais serviços já existentes:
 O backend atual é enxuto e expõe principalmente:
 - `GET /api/health`
 - `POST /api/logs`
+- `POST /api/auth/sign-up`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/password-changed`
 
 Também mantém:
 - validação de ambiente em `backend/src/config/env.ts`
-- cliente admin do Supabase em `backend/src/services/supabase.ts`
-- cliente Prisma em `backend/src/services/prisma.ts`
+- integrações externas centralizadas em `backend/src/integrations/`
+- templates e envio de email em `backend/src/services/email.service.ts`
 - logging estruturado com Winston
 
 Ele não substitui o Supabase para o CRUD principal da aplicação; esse tráfego ainda acontece majoritariamente direto do frontend para o Supabase.

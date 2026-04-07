@@ -85,13 +85,9 @@ export function useSignUp() {
 
   return useMutation({
     mutationFn: (input: SignUpInput) => authService.signUp(input),
-    onSuccess: (data) => {
-      if (data.user && !data.session) {
-        toast.success('Verifique seu email para confirmar o cadastro.')
-        navigate(ROUTES.LOGIN)
-      } else {
-        navigate(ROUTES.DASHBOARD)
-      }
+    onSuccess: () => {
+      toast.success('Enviamos um email de confirmação personalizado para o seu cadastro.')
+      navigate(ROUTES.LOGIN)
     },
   })
 }

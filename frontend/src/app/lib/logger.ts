@@ -1,3 +1,5 @@
+import { apiClient } from '@/app/lib/api'
+
 type LogLevel = 'info' | 'warn' | 'error'
 
 interface LogMeta {
@@ -11,23 +13,17 @@ const COLORS: Record<LogLevel, string> = {
 }
 
 const isDev = import.meta.env.DEV
-const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 // ── Envio de logs de erro para o backend ──────────────────────────────────────
 async function sendToBackend(level: LogLevel, message: string, data?: unknown) {
-  if (!API_URL) return
   try {
-    await fetch(`${API_URL}/api/logs`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        level,
-        message,
-        data,
-        timestamp: new Date().toISOString(),
-        url:       window.location.href,
-        userAgent: navigator.userAgent,
-      }),
+    await apiClient.post('/logs', {
+      level,
+      message,
+      data,
+      timestamp: new Date().toISOString(),
+      url:       window.location.href,
+      userAgent: navigator.userAgent,
     })
   } catch {
     // Silencioso — não cria loop infinito de logs

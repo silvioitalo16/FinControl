@@ -48,11 +48,14 @@ VITE_API_URL=http://localhost:3001
 
 ```env
 PORT=3001
+APP_URL=http://localhost:5173
 CORS_ORIGIN=http://localhost:5173
 NODE_ENV=development
 LOG_LEVEL=info
 SUPABASE_URL=https://SEU_PROJECT_REF.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...sua_service_role_key...
+RESEND_API_KEY=re_xxxxxxxxx
+EMAIL_FROM=FinControl <onboarding@seudominio.com>
 DATABASE_URL=postgresql://postgres.[ref]:[senha]@aws-0-sa-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true
 DIRECT_URL=postgresql://postgres:[senha]@db.[ref].supabase.co:5432/postgres
 ```
@@ -60,7 +63,9 @@ DIRECT_URL=postgresql://postgres:[senha]@db.[ref].supabase.co:5432/postgres
 Notas:
 - O backend carrega primeiro `backend/.env.local` e usa `backend/.env` como fallback.
 - `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` são obrigatórios para rodar a API.
+- `APP_URL`, `RESEND_API_KEY` e `EMAIL_FROM` são necessários para os emails transacionais de cadastro, recuperação e aviso de troca de senha.
 - `DATABASE_URL` e `DIRECT_URL` são usados principalmente para manutenção do schema via Prisma, introspecção e reconciliação do banco.
+- No painel do Supabase, adicione `http://localhost:5173/dashboard` e `http://localhost:5173/reset-password` em `Auth` > `URL Configuration` > `Redirect URLs`.
 
 Onde encontrar as chaves no Supabase:
 - `VITE_SUPABASE_ANON_KEY`: `Project Settings` > `API` > `anon`
