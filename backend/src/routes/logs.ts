@@ -1,8 +1,17 @@
 import { Router } from 'express'
+import rateLimit from 'express-rate-limit'
 import { z } from 'zod'
 import { logger } from '../utils/logger'
 
 const router = Router()
+
+const logsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: { message: 'Limite de logs excedido.', code: 'RATE_LIMITED' } },
+})
 
 const logSchema = z.object({
   level:     z.enum(['info', 'warn', 'error']),
@@ -18,7 +27,7 @@ const logSchema = z.object({
  * Recebe logs do frontend (erros, warnings) e os registra via Winston.
  * Permite rastrear erros de produção no frontend.
  */
-router.post('/', (req, res, next) => {
+router.post('/', logsLimiter, (req, res, next) => {
   try {
     const parsed = logSchema.safeParse(req.body)
     if (!parsed.success) {

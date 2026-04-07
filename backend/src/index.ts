@@ -25,6 +25,14 @@ app.use(express.urlencoded({ extended: true }))
 app.use(requestLogger)
 app.use(slowRequestLogger)
 
+// ── Timeout global (10 s) ────────────────────────────────────────────────────
+app.use((_req, res, next) => {
+  res.setTimeout(10_000, () => {
+    res.status(503).json({ error: { message: 'O servidor demorou demais para responder.', code: 'TIMEOUT' } })
+  })
+  next()
+})
+
 // ── Rotas ────────────────────────────────────────────────────────────────────
 app.use('/api', router)
 
