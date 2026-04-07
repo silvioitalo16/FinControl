@@ -11,10 +11,20 @@ const app = express()
 
 // ── Segurança ────────────────────────────────────────────────────────────────
 app.use(helmet())
+
+const allowedOrigins = env.CORS_ORIGIN
+  .split(',')
+  .map((o) => o.trim().replace(/\/$/, '')) // remove trailing slashes
+
 app.use(cors({
-  origin:      env.CORS_ORIGIN,
+  origin: (origin, callback) => {
+    // Permite requisições sem origin (ex: Postman, Railway healthcheck)
+    if (!origin) return callback(null, true)
+    if (allowedOrigins.includes(origin)) return callback(null, true)
+    callback(new Error(`CORS: origem não permitida — ${origin}`))
+  },
   credentials: true,
-  methods:     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }))
 
 // ── Parsing ──────────────────────────────────────────────────────────────────
