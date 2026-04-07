@@ -9,6 +9,9 @@ import { router } from './routes'
 
 const app = express()
 
+// Railway e outros proxies reversos enviam X-Forwarded-For
+app.set('trust proxy', 1)
+
 // ── Segurança ────────────────────────────────────────────────────────────────
 app.use(helmet())
 
