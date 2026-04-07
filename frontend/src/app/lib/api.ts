@@ -8,7 +8,7 @@ interface ApiRequestOptions {
   auth?: boolean
 }
 
-async function getAuthHeaders(auth: boolean) {
+async function getAuthHeaders(auth: boolean): Promise<Record<string, string>> {
   if (!auth) return {}
 
   const { data, error } = await supabase.auth.getSession()
