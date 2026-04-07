@@ -14,12 +14,14 @@ app.use(helmet())
 
 const allowedOrigins = env.CORS_ORIGIN
   .split(',')
-  .map((o) => o.trim().replace(/\/$/, '')) // remove trailing slashes
+  .map((o) => o.trim().replace(/\/$/, ''))
 
 app.use(cors({
   origin: (origin, callback) => {
     // Permite requisições sem origin (ex: Postman, Railway healthcheck)
     if (!origin) return callback(null, true)
+    // Permite qualquer subdomínio vercel.app em produção
+    if (origin.endsWith('.vercel.app')) return callback(null, true)
     if (allowedOrigins.includes(origin)) return callback(null, true)
     callback(new Error(`CORS: origem não permitida — ${origin}`))
   },
