@@ -31,10 +31,10 @@ export default function ResetPassword() {
       if (data.session) setSessionState('ready')
     })
 
-    // Timeout: se em 10s não vier sessão, o link é inválido/expirado
+    // Timeout: se em 30s não vier sessão, o link é inválido/expirado
     const timeout = setTimeout(() => {
       setSessionState((prev) => prev === 'loading' ? 'invalid' : prev)
-    }, 10_000)
+    }, 30_000)
 
     return () => {
       subscription.unsubscribe()
