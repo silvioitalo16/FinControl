@@ -11,6 +11,9 @@
     "generate": "prisma generate --schema=./supabase/prisma/schema.prisma",
     "db:pull": "prisma db pull --schema=./supabase/prisma/schema.prisma"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "prisma": {
     "schema": "./supabase/prisma/schema.prisma"
   },
