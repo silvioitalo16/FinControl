@@ -19,13 +19,14 @@ const allowedOrigins = env.CORS_ORIGIN
   .split(',')
   .map((o) => o.trim().replace(/\/$/, ''))
 
+// Preview deploys do Vercel seguem o padrão: fincontrol-*-silvioitalo16s-projects.vercel.app
+const VERCEL_PREVIEW_RE = /^https:\/\/fin-control-[a-z0-9-]+-silvioitalo16s-projects\.vercel\.app$/
+
 app.use(cors({
   origin: (origin, callback) => {
-    // Permite requisições sem origin (ex: Postman, Railway healthcheck)
     if (!origin) return callback(null, true)
-    // Permite qualquer subdomínio vercel.app em produção
-    if (origin.endsWith('.vercel.app')) return callback(null, true)
     if (allowedOrigins.includes(origin)) return callback(null, true)
+    if (VERCEL_PREVIEW_RE.test(origin)) return callback(null, true)
     callback(new Error(`CORS: origem não permitida — ${origin}`))
   },
   credentials: true,

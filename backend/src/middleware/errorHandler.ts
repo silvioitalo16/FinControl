@@ -7,6 +7,19 @@ export interface AppError extends Error {
   code?:       string
 }
 
+const SENSITIVE_FIELDS = ['password', 'token', 'secret', 'key', 'authorization', 'cookie', 'credit_card']
+
+function sanitizeBody(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return body
+  const safe = { ...(body as Record<string, unknown>) }
+  for (const field of Object.keys(safe)) {
+    if (SENSITIVE_FIELDS.some((s) => field.toLowerCase().includes(s))) {
+      safe[field] = '[REDACTED]'
+    }
+  }
+  return safe
+}
+
 export function errorHandler(
   err: AppError,
   req: Request,
@@ -20,7 +33,7 @@ export function errorHandler(
     status,
     code:  err.code,
     stack: isDev ? err.stack : undefined,
-    body:  req.body,
+    body:  sanitizeBody(req.body),
   })
 
   res.status(status).json({

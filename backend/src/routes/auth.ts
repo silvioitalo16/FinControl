@@ -8,6 +8,13 @@ import { createError } from '../middleware/errorHandler'
 import { emailService } from '../services/email.service'
 import { logger } from '../utils/logger'
 
+/** Mascara email para logs: s***@gmail.com */
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@')
+  if (!local || !domain) return '***'
+  return `${local[0]}***@${domain}`
+}
+
 const router = Router()
 
 const authLimiter = rateLimit({
@@ -56,7 +63,7 @@ router.post('/sign-up', authLimiter, async (req, res, next) => {
       actionLink: data.properties.action_link,
     })
 
-    logger.info('Email de confirmação enviado via Resend.', { email: payload.email })
+    logger.info('Email de confirmação enviado via Resend.', { email: maskEmail(payload.email) })
     res.status(204).end()
   } catch (err) {
     next(err)
@@ -83,9 +90,9 @@ router.post('/forgot-password', authLimiter, async (req, res, next) => {
         fullName: typeof data.user?.user_metadata?.full_name === 'string' ? data.user.user_metadata.full_name : undefined,
         actionLink: data.properties.action_link,
       }).catch((emailErr) => {
-        logger.warn('Falha ao enviar email de recuperação.', { email: payload.email, error: String(emailErr) })
+        logger.warn('Falha ao enviar email de recuperação.', { email: maskEmail(payload.email), error: String(emailErr) })
       })
-      logger.info('Email de recuperação enviado via Resend.', { email: payload.email })
+      logger.info('Email de recuperação enviado via Resend.', { email: maskEmail(payload.email) })
     }
 
     res.status(204).end()
@@ -108,7 +115,7 @@ router.post('/password-changed', requireAuth, async (req, res, next) => {
 
     logger.info('Notificação de senha alterada enviada via Resend.', {
       userId: req.userId,
-      email: req.userEmail,
+      email: maskEmail(req.userEmail),
     })
 
     res.status(204).end()

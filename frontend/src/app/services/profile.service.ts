@@ -48,7 +48,7 @@ export const profileService = {
     const userId = getAuthUserId()
     const { data, error } = await supabase
       .from('user_settings')
-      .select('*, two_factor_secret')  // two_factor_secret não será exposto via RLS
+      .select('id, user_id, push_notifications, email_notifications, transaction_alerts, budget_alerts, goal_alerts, dark_mode, language, two_factor_enabled, created_at, updated_at')
       .eq('user_id', userId)
       .single()
     if (error) throw error

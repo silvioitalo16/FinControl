@@ -26,7 +26,10 @@ export const transactionsService = {
     if (category_id)             query = query.eq('category_id', category_id)
     if (dateFrom)                query = query.gte('date', dateFrom)
     if (dateTo)                  query = query.lte('date', dateTo)
-    if (search)                  query = query.ilike('description', `%${search}%`)
+    if (search) {
+      const escaped = search.replace(/[%_\\]/g, '\\$&')
+      query = query.ilike('description', `%${escaped}%`)
+    }
 
     const { data, error, count } = await query
     if (error) throw error

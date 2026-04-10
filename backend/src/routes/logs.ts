@@ -13,13 +13,32 @@ const logsLimiter = rateLimit({
   message: { error: { message: 'Limite de logs excedido.', code: 'RATE_LIMITED' } },
 })
 
+const SENSITIVE_LOG_FIELDS = ['password', 'token', 'secret', 'key', 'authorization', 'cookie']
+const MAX_DATA_SIZE = 2048 // 2KB
+
+function sanitizeLogData(data: unknown): unknown {
+  if (data === undefined || data === null) return data
+  const str = JSON.stringify(data)
+  if (str.length > MAX_DATA_SIZE) return { _truncated: true, _size: str.length }
+  if (typeof data === 'object' && data !== null) {
+    const safe = { ...(data as Record<string, unknown>) }
+    for (const field of Object.keys(safe)) {
+      if (SENSITIVE_LOG_FIELDS.some((s) => field.toLowerCase().includes(s))) {
+        safe[field] = '[REDACTED]'
+      }
+    }
+    return safe
+  }
+  return data
+}
+
 const logSchema = z.object({
   level:     z.enum(['info', 'warn', 'error']),
   message:   z.string().min(1).max(500),
   data:      z.unknown().optional(),
-  timestamp: z.string().optional(),
-  url:       z.string().optional(),
-  userAgent: z.string().optional(),
+  timestamp: z.string().max(50).optional(),
+  url:       z.string().max(500).optional(),
+  userAgent: z.string().max(500).optional(),
 })
 
 /**
@@ -42,7 +61,7 @@ router.post('/', logsLimiter, (req, res, next) => {
       userAgent: userAgent ?? req.headers['user-agent'],
       clientIp:  (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.ip,
       timestamp,
-      data,
+      data: sanitizeLogData(data),
     }
 
     logger[level](`[FRONTEND] ${message}`, meta)
