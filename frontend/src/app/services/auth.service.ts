@@ -10,11 +10,12 @@ export const authService = {
     return data
   },
 
-  async signUp({ email, password, full_name }: SignUpInput) {
+  async signUp({ email, password, full_name }: SignUpInput, turnstileToken?: string) {
     await apiClient.post('/auth/sign-up', {
       email,
       password,
       full_name,
+      turnstileToken,
     })
   },
 
@@ -23,8 +24,8 @@ export const authService = {
     if (error) throw error
   },
 
-  async sendPasswordResetEmail(email: string) {
-    await apiClient.post('/auth/forgot-password', { email })
+  async sendPasswordResetEmail(email: string, turnstileToken?: string) {
+    await apiClient.post('/auth/forgot-password', { email, turnstileToken })
   },
 
   async updatePassword(newPassword: string) {

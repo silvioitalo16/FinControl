@@ -1,12 +1,15 @@
+import { useState } from 'react'
 import { Link } from 'react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { forgotPasswordSchema, type ForgotPasswordInput } from '@/app/validators/auth.schema'
 import { useForgotPassword } from '@/app/hooks/useAuth'
 import { ROUTES } from '@/app/config/routes'
+import TurnstileWidget from '@/app/components/TurnstileWidget'
 
 export default function ForgotPassword() {
   const { mutate: sendReset, isPending, isSuccess } = useForgotPassword()
+  const [turnstileToken, setTurnstileToken] = useState<string>()
   const { register, handleSubmit, formState: { errors } } = useForm<ForgotPasswordInput>({
     resolver: zodResolver(forgotPasswordSchema),
   })
@@ -34,7 +37,7 @@ export default function ForgotPassword() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit((data) => sendReset(data.email))} className="space-y-4">
+        <form onSubmit={handleSubmit((data) => sendReset({ email: data.email, turnstileToken }))} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium">Email</label>
             <input
@@ -45,6 +48,11 @@ export default function ForgotPassword() {
             />
             {errors.email && <p className="mt-1 text-xs text-destructive">{errors.email.message}</p>}
           </div>
+
+          <TurnstileWidget
+            onVerify={setTurnstileToken}
+            onExpire={() => setTurnstileToken(undefined)}
+          />
 
           <button
             type="submit"

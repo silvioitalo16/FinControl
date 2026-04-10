@@ -84,7 +84,8 @@ export function useSignUp() {
   const navigate = useNavigate()
 
   return useMutation({
-    mutationFn: (input: SignUpInput) => authService.signUp(input),
+    mutationFn: ({ turnstileToken, ...input }: SignUpInput & { turnstileToken?: string }) =>
+      authService.signUp(input, turnstileToken),
     onSuccess: () => {
       toast.success('Enviamos um email de confirmação personalizado para o seu cadastro.')
       navigate(ROUTES.LOGIN)
@@ -107,7 +108,8 @@ export function useSignOut() {
 
 export function useForgotPassword() {
   return useMutation({
-    mutationFn: (email: string) => authService.sendPasswordResetEmail(email),
+    mutationFn: ({ email, turnstileToken }: { email: string; turnstileToken?: string }) =>
+      authService.sendPasswordResetEmail(email, turnstileToken),
     onSuccess: () => {
       toast.success('Email de recuperação enviado.')
     },

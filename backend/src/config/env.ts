@@ -16,6 +16,7 @@ const schema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY obrigatório'),
   RESEND_API_KEY:            z.string().min(1, 'RESEND_API_KEY obrigatório'),
   EMAIL_FROM:                z.string().default('FinControl <onboarding@resend.dev>'),
+  TURNSTILE_SECRET_KEY:      z.string().optional(),
 })
 
 const parsed = schema.safeParse(process.env)

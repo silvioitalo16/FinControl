@@ -6,13 +6,32 @@ import { supabaseAdmin } from '../integrations/supabase'
 import { requireAuth } from '../middleware/auth'
 import { createError } from '../middleware/errorHandler'
 import { emailService } from '../services/email.service'
+import { isDisposableEmail } from '../utils/disposable-domains'
 import { logger } from '../utils/logger'
+import { calculateRiskScore } from '../utils/risk-score'
+import { checkSignupLimit, recordSignup } from '../utils/signup-limiter'
+import { verifyTurnstile } from '../utils/turnstile'
 
 /** Mascara email para logs: s***@gmail.com */
 function maskEmail(email: string): string {
   const [local, domain] = email.split('@')
   if (!local || !domain) return '***'
   return `${local[0]}***@${domain}`
+}
+
+/** Extrai domínio do email */
+function emailDomain(email: string): string {
+  return email.split('@')[1] ?? 'unknown'
+}
+
+/** Metadata de telemetria para logs de auth */
+function authMeta(req: import('express').Request, email: string) {
+  return {
+    email: maskEmail(email),
+    domain: emailDomain(email),
+    ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.ip,
+    userAgent: req.headers['user-agent']?.substring(0, 200),
+  }
 }
 
 const router = Router()
@@ -33,15 +52,45 @@ const signUpSchema = z.object({
     .min(8)
     .regex(/[A-Z]/, 'A senha deve conter uma letra maiúscula.')
     .regex(/[0-9]/, 'A senha deve conter um número.'),
+  turnstileToken: z.string().optional(),
 })
 
 const forgotPasswordSchema = z.object({
   email: z.string().email().toLowerCase().trim(),
+  turnstileToken: z.string().optional(),
 })
 
 router.post('/sign-up', authLimiter, async (req, res, next) => {
   try {
     const payload = signUpSchema.parse(req.body)
+
+    const meta = authMeta(req, payload.email)
+
+    const turnstileOk = await verifyTurnstile(payload.turnstileToken, meta.ip)
+    if (!turnstileOk) {
+      logger.warn('[SIGNUP] Turnstile falhou', { ...meta, reason: 'CAPTCHA_FAILED' })
+      throw createError('Verificação de segurança falhou. Tente novamente.', 403, 'CAPTCHA_FAILED')
+    }
+
+    if (isDisposableEmail(payload.email)) {
+      logger.warn('[SIGNUP] Email descartável bloqueado', { ...meta, reason: 'DISPOSABLE_EMAIL' })
+      throw createError('Use um email pessoal ou corporativo válido.', 422, 'DISPOSABLE_EMAIL')
+    }
+
+    const limitCheck = checkSignupLimit(meta.domain, meta.ip ?? '')
+    if (!limitCheck.allowed) {
+      logger.warn('[SIGNUP] Rate limit granular atingido', { ...meta, reason: limitCheck.reason })
+      throw createError('Muitas tentativas de cadastro. Tente novamente mais tarde.', 429, limitCheck.reason)
+    }
+
+    const risk = calculateRiskScore({ email: payload.email, ip: meta.ip, userAgent: meta.userAgent })
+    if (risk.score >= 5) {
+      logger.warn('[SIGNUP] Score de risco alto — bloqueado', { ...meta, riskScore: risk.score, riskFlags: risk.flags })
+      throw createError('Cadastro bloqueado por motivos de segurança.', 403, 'HIGH_RISK')
+    }
+    if (risk.score >= 3) {
+      logger.warn('[SIGNUP] Score de risco moderado — permitido com alerta', { ...meta, riskScore: risk.score, riskFlags: risk.flags })
+    }
 
     const { data, error } = await supabaseAdmin.auth.admin.generateLink({
       type: 'signup',
@@ -63,7 +112,8 @@ router.post('/sign-up', authLimiter, async (req, res, next) => {
       actionLink: data.properties.action_link,
     })
 
-    logger.info('Email de confirmação enviado via Resend.', { email: maskEmail(payload.email) })
+    recordSignup(meta.domain, meta.ip ?? '')
+    logger.info('[SIGNUP] Cadastro realizado com sucesso', meta)
     res.status(204).end()
   } catch (err) {
     next(err)
@@ -73,6 +123,14 @@ router.post('/sign-up', authLimiter, async (req, res, next) => {
 router.post('/forgot-password', authLimiter, async (req, res, next) => {
   try {
     const payload = forgotPasswordSchema.parse(req.body)
+
+    const meta = authMeta(req, payload.email)
+
+    const turnstileOk = await verifyTurnstile(payload.turnstileToken, meta.ip)
+    if (!turnstileOk) {
+      logger.warn('[FORGOT-PWD] Turnstile falhou', { ...meta, reason: 'CAPTCHA_FAILED' })
+      throw createError('Verificação de segurança falhou. Tente novamente.', 403, 'CAPTCHA_FAILED')
+    }
 
     const { data, error } = await supabaseAdmin.auth.admin.generateLink({
       type: 'recovery',
@@ -90,9 +148,9 @@ router.post('/forgot-password', authLimiter, async (req, res, next) => {
         fullName: typeof data.user?.user_metadata?.full_name === 'string' ? data.user.user_metadata.full_name : undefined,
         actionLink: data.properties.action_link,
       }).catch((emailErr) => {
-        logger.warn('Falha ao enviar email de recuperação.', { email: maskEmail(payload.email), error: String(emailErr) })
+        logger.warn('[FORGOT-PWD] Falha ao enviar email', { ...meta, error: String(emailErr) })
       })
-      logger.info('Email de recuperação enviado via Resend.', { email: maskEmail(payload.email) })
+      logger.info('[FORGOT-PWD] Email de recuperação enviado', meta)
     }
 
     res.status(204).end()

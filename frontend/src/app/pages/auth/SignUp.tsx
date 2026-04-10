@@ -1,12 +1,15 @@
+import { useState } from 'react'
 import { Link } from 'react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { signUpSchema, type SignUpInput } from '@/app/validators/auth.schema'
 import { useSignUp } from '@/app/hooks/useAuth'
 import { ROUTES } from '@/app/config/routes'
+import TurnstileWidget from '@/app/components/TurnstileWidget'
 
 export default function SignUp() {
   const { mutate: signUp, isPending } = useSignUp()
+  const [turnstileToken, setTurnstileToken] = useState<string>()
   const { register, handleSubmit, formState: { errors } } = useForm<SignUpInput>({
     resolver: zodResolver(signUpSchema),
   })
@@ -19,7 +22,7 @@ export default function SignUp() {
           <p className="mt-2 text-muted-foreground">Crie sua conta gratuita</p>
         </div>
 
-        <form onSubmit={handleSubmit((data) => signUp(data))} className="space-y-4">
+        <form onSubmit={handleSubmit((data) => signUp({ ...data, turnstileToken }))} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium">Nome completo</label>
             <input
@@ -62,6 +65,11 @@ export default function SignUp() {
             />
             {errors.confirmPassword && <p className="mt-1 text-xs text-destructive">{errors.confirmPassword.message}</p>}
           </div>
+
+          <TurnstileWidget
+            onVerify={setTurnstileToken}
+            onExpire={() => setTurnstileToken(undefined)}
+          />
 
           <button
             type="submit"
