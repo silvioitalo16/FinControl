@@ -8,36 +8,87 @@ import PasswordInput from '@/app/components/PasswordInput'
 
 type SessionState = 'loading' | 'ready' | 'invalid'
 
+const LINK_ERROR_MESSAGES: Record<string, string> = {
+  otp_expired: 'Este link de recuperação expirou ou já foi utilizado. Solicite um novo.',
+  access_denied: 'Link inválido. Solicite um novo.',
+}
+
 export default function ResetPassword() {
   const [sessionState, setSessionState] = useState<SessionState>('loading')
+  const [invalidReason, setInvalidReason] = useState<string | null>(null)
   const { mutate: resetPassword, isPending } = useResetPassword()
   const { register, handleSubmit, formState: { errors } } = useForm<ResetPasswordInput>({
     resolver: zodResolver(resetPasswordSchema),
   })
 
   useEffect(() => {
-    // Supabase com flowType=pkce detecta o token na URL e dispara PASSWORD_RECOVERY
-    // Precisamos aguardar esse evento antes de permitir updateUser
+    let cancelled = false
+
+    function markInvalid(reason: string) {
+      if (cancelled) return
+      setInvalidReason(reason)
+      setSessionState('invalid')
+    }
+
+    // 1) Primeiro parseia o fragmento manualmente — Supabase em modo PKCE não
+    //    processa link implicit-flow (gerado via admin.generateLink no backend)
+    //    e o onAuthStateChange pode disparar antes do mount (race). Então
+    //    estabelecemos a sessão aqui diretamente.
+    const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : ''
+    const params = new URLSearchParams(hash)
+    const errorCode = params.get('error_code') ?? params.get('error')
+    const accessToken = params.get('access_token')
+    const refreshToken = params.get('refresh_token')
+
+    if (errorCode) {
+      markInvalid(LINK_ERROR_MESSAGES[errorCode] ?? 'Link inválido ou expirado. Solicite um novo.')
+      // Limpa fragmento da URL (remove token/erro do histórico)
+      window.history.replaceState(null, '', window.location.pathname)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    if (accessToken && refreshToken) {
+      supabase.auth
+        .setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .then(({ error }) => {
+          if (cancelled) return
+          if (error) {
+            markInvalid('Não foi possível validar o link de recuperação. Solicite um novo.')
+          } else {
+            setSessionState('ready')
+          }
+          // Remove tokens do fragmento — não deixa credencial no histórico
+          window.history.replaceState(null, '', window.location.pathname)
+        })
+      return () => {
+        cancelled = true
+      }
+    }
+
+    // 2) Fallback: sem fragmento (PKCE real, ou usuário já tem sessão ativa).
+    //    Inscreve no auth state change e também verifica a sessão atual.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY' && session) {
-        setSessionState('ready')
-      } else if (event === 'SIGNED_IN' && session) {
-        // Token já foi trocado em visita anterior à mesma URL
+      if (cancelled) return
+      if ((event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') && session) {
         setSessionState('ready')
       }
     })
 
-    // Se já tem sessão ativa de recuperação, fica pronto imediatamente
     supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return
       if (data.session) setSessionState('ready')
     })
 
-    // Timeout: se em 30s não vier sessão, o link é inválido/expirado
     const timeout = setTimeout(() => {
-      setSessionState((prev) => prev === 'loading' ? 'invalid' : prev)
-    }, 30_000)
+      if (cancelled) return
+      setSessionState((prev) => (prev === 'loading' ? 'invalid' : prev))
+      setInvalidReason((prev) => prev ?? 'Link inválido ou expirado. Solicite um novo.')
+    }, 8_000)
 
     return () => {
+      cancelled = true
       subscription.unsubscribe()
       clearTimeout(timeout)
     }
@@ -60,7 +111,7 @@ export default function ResetPassword() {
         <div className="w-full max-w-sm text-center space-y-4">
           <h1 className="text-2xl font-bold">Link expirado</h1>
           <p className="text-sm text-muted-foreground">
-            Este link de recuperação é inválido ou já expirou. Solicite um novo.
+            {invalidReason ?? 'Este link de recuperação é inválido ou já expirou. Solicite um novo.'}
           </p>
           <a
             href="/forgot-password"
