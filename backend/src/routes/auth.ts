@@ -8,6 +8,7 @@ import { createError } from '../middleware/errorHandler'
 import { emailService } from '../services/email.service'
 import { isDisposableEmail } from '../utils/disposable-domains'
 import { logger } from '../utils/logger'
+import { isDisposableViaMailcheck } from '../utils/mailcheck'
 import { calculateRiskScore } from '../utils/risk-score'
 import { checkSignupLimit, recordSignup } from '../utils/signup-limiter'
 import { verifyTurnstile } from '../utils/turnstile'
@@ -73,7 +74,13 @@ router.post('/sign-up', authLimiter, async (req, res, next) => {
     }
 
     if (isDisposableEmail(payload.email)) {
-      logger.warn('[SIGNUP] Email descartável bloqueado', { ...meta, reason: 'DISPOSABLE_EMAIL' })
+      logger.warn('[SIGNUP] Email descartável bloqueado (lista local)', { ...meta, reason: 'DISPOSABLE_EMAIL_LOCAL' })
+      throw createError('Use um email pessoal ou corporativo válido.', 422, 'DISPOSABLE_EMAIL')
+    }
+
+    // Segunda camada: API externa Mailcheck.ai (gratuita, atualizada em tempo real)
+    if (await isDisposableViaMailcheck(payload.email)) {
+      logger.warn('[SIGNUP] Email descartável bloqueado (Mailcheck.ai)', { ...meta, reason: 'DISPOSABLE_EMAIL_API' })
       throw createError('Use um email pessoal ou corporativo válido.', 422, 'DISPOSABLE_EMAIL')
     }
 

@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { loginSchema, type LoginInput } from '@/app/validators/auth.schema'
 import { useSignIn } from '@/app/hooks/useAuth'
 import { ROUTES } from '@/app/config/routes'
+import PasswordInput from '@/app/components/PasswordInput'
 
 export default function Login() {
   const { mutate: signIn, isPending } = useSignIn()
@@ -33,12 +34,7 @@ export default function Login() {
 
           <div>
             <label className="mb-1 block text-sm font-medium">Senha</label>
-            <input
-              {...register('password')}
-              type="password"
-              placeholder="••••••••"
-              className="w-full rounded-lg border border-border bg-muted px-3 py-2.5 text-sm outline-none focus:border-primary"
-            />
+            <PasswordInput {...register('password')} placeholder="••••••••" />
             {errors.password && <p className="mt-1 text-xs text-destructive">{errors.password.message}</p>}
           </div>
 

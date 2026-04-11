@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { resetPasswordSchema, type ResetPasswordInput } from '@/app/validators/auth.schema'
 import { useResetPassword } from '@/app/hooks/useAuth'
 import { supabase } from '@/app/lib/supabase'
+import PasswordInput from '@/app/components/PasswordInput'
 
 type SessionState = 'loading' | 'ready' | 'invalid'
 
@@ -83,22 +84,18 @@ export default function ResetPassword() {
         <form onSubmit={handleSubmit((data) => resetPassword(data.password))} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium">Nova senha</label>
-            <input
+            <PasswordInput
               {...register('password')}
-              type="password"
               placeholder="Mín. 8 caracteres"
-              className="w-full rounded-lg border border-border bg-muted px-3 py-2.5 text-sm outline-none focus:border-primary"
             />
             {errors.password && <p className="mt-1 text-xs text-destructive">{errors.password.message}</p>}
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium">Confirmar senha</label>
-            <input
+            <PasswordInput
               {...register('confirmPassword')}
-              type="password"
               placeholder="Repita a senha"
-              className="w-full rounded-lg border border-border bg-muted px-3 py-2.5 text-sm outline-none focus:border-primary"
             />
             {errors.confirmPassword && <p className="mt-1 text-xs text-destructive">{errors.confirmPassword.message}</p>}
           </div>

@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { signUpSchema, type SignUpInput } from '@/app/validators/auth.schema'
 import { useSignUp } from '@/app/hooks/useAuth'
 import { ROUTES } from '@/app/config/routes'
+import PasswordInput from '@/app/components/PasswordInput'
 import TurnstileWidget from '@/app/components/TurnstileWidget'
 
 export default function SignUp() {
@@ -46,23 +47,13 @@ export default function SignUp() {
 
           <div>
             <label className="mb-1 block text-sm font-medium">Senha</label>
-            <input
-              {...register('password')}
-              type="password"
-              placeholder="Mín. 8 caracteres"
-              className="w-full rounded-lg border border-border bg-muted px-3 py-2.5 text-sm outline-none focus:border-primary"
-            />
+            <PasswordInput {...register('password')} placeholder="Mín. 8 caracteres" />
             {errors.password && <p className="mt-1 text-xs text-destructive">{errors.password.message}</p>}
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium">Confirmar senha</label>
-            <input
-              {...register('confirmPassword')}
-              type="password"
-              placeholder="Repita a senha"
-              className="w-full rounded-lg border border-border bg-muted px-3 py-2.5 text-sm outline-none focus:border-primary"
-            />
+            <PasswordInput {...register('confirmPassword')} placeholder="Repita a senha" />
             {errors.confirmPassword && <p className="mt-1 text-xs text-destructive">{errors.confirmPassword.message}</p>}
           </div>
 
