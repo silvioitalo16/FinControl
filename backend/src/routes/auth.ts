@@ -110,7 +110,42 @@ router.post('/sign-up', authLimiter, async (req, res, next) => {
     })
 
     if (error || !data.properties?.action_link) {
-      throw error ?? createError('Não foi possível gerar o link de confirmação.', 500, 'SIGNUP_LINK_FAILED')
+      if (error) {
+        logger.warn('[SIGNUP] Supabase rejeitou cadastro', {
+          ...meta,
+          supabaseCode: error.code,
+          rawMessage: error.message,
+        })
+
+        const rawLower = error.message.toLowerCase()
+
+        if (error.code === 'email_exists' || rawLower.includes('already been registered')) {
+          throw createError(
+            'Este email já está cadastrado. Faça login ou recupere a senha.',
+            409,
+            'EMAIL_ALREADY_EXISTS',
+          )
+        }
+        if (error.code === 'weak_password' || rawLower.includes('password')) {
+          throw createError(
+            'Senha muito fraca. Use pelo menos 8 caracteres, com letra maiúscula e número.',
+            422,
+            'WEAK_PASSWORD',
+          )
+        }
+        if (error.code === 'over_email_send_rate_limit' || rawLower.includes('rate limit')) {
+          throw createError(
+            'Muitas tentativas. Aguarde alguns minutos e tente novamente.',
+            429,
+            'RATE_LIMITED',
+          )
+        }
+      }
+      throw createError(
+        'Não foi possível criar a conta no momento. Tente novamente.',
+        502,
+        'SIGNUP_LINK_FAILED',
+      )
     }
 
     await emailService.sendSignUpConfirmationEmail({
