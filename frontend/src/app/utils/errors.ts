@@ -18,11 +18,15 @@ export function parseSupabaseError(error: unknown): string {
 
   const message = (error as PostgrestError | Error)?.message ?? String(error)
 
+  // Traduz mensagens conhecidas do Supabase (em inglês)
   for (const [key, translation] of Object.entries(SUPABASE_ERROR_MESSAGES)) {
     if (message.includes(key)) return translation
   }
 
-  if (process.env.NODE_ENV === 'development') {
+  // Mensagens curtas e legíveis (inclusive as do nosso backend em português)
+  // são devolvidas tal qual. O limite de 200 protege contra stack traces e
+  // dumps de PostgrestError que não fazem sentido para o usuário final.
+  if (message && message.length > 0 && message.length <= 200) {
     return message
   }
 
