@@ -47,13 +47,13 @@ export default function SignUp() {
 
           <div>
             <label className="mb-1 block text-sm font-medium">Senha</label>
-            <PasswordInput {...register('password')} placeholder="Mín. 8 caracteres" />
+            <PasswordInput {...register('password')} placeholder="Mín. 8 caracteres" autoComplete="new-password" />
             {errors.password && <p className="mt-1 text-xs text-destructive">{errors.password.message}</p>}
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium">Confirmar senha</label>
-            <PasswordInput {...register('confirmPassword')} placeholder="Repita a senha" />
+            <PasswordInput {...register('confirmPassword')} placeholder="Repita a senha" autoComplete="new-password" />
             {errors.confirmPassword && <p className="mt-1 text-xs text-destructive">{errors.confirmPassword.message}</p>}
           </div>
 

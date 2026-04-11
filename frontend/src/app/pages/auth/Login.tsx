@@ -34,7 +34,7 @@ export default function Login() {
 
           <div>
             <label className="mb-1 block text-sm font-medium">Senha</label>
-            <PasswordInput {...register('password')} placeholder="••••••••" />
+            <PasswordInput {...register('password')} placeholder="••••••••" autoComplete="current-password" />
             {errors.password && <p className="mt-1 text-xs text-destructive">{errors.password.message}</p>}
           </div>
 

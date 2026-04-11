@@ -124,6 +124,10 @@ function PasswordSection() {
           <input
             {...register(field)}
             type="password"
+            autoComplete={field === 'currentPassword' ? 'current-password' : 'new-password'}
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
             placeholder={field === 'currentPassword' ? 'Senha atual' : field === 'newPassword' ? 'Nova senha' : 'Confirmar nova senha'}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />

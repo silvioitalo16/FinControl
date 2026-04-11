@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { authService } from '@/app/services/auth.service'
+import { parseSupabaseError } from '@/app/utils/errors'
 import { profileService } from '@/app/services/profile.service'
 import { transactionsService } from '@/app/services/transactions.service'
 import { goalsService } from '@/app/services/goals.service'
@@ -74,8 +75,8 @@ export function useSignIn() {
       } catch { /* handled by auth listener */ }
       navigate(ROUTES.DASHBOARD)
     },
-    onError: () => {
-      toast.error('Email ou senha incorretos.')
+    onError: (error) => {
+      toast.error(parseSupabaseError(error))
     },
   })
 }

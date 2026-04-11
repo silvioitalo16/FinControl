@@ -12,6 +12,9 @@ const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(function 
   return (
     <div className="relative">
       <input
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
         {...props}
         ref={ref}
         type={visible ? 'text' : 'password'}

@@ -87,6 +87,7 @@ export default function ResetPassword() {
             <PasswordInput
               {...register('password')}
               placeholder="Mín. 8 caracteres"
+              autoComplete="new-password"
             />
             {errors.password && <p className="mt-1 text-xs text-destructive">{errors.password.message}</p>}
           </div>
@@ -96,6 +97,7 @@ export default function ResetPassword() {
             <PasswordInput
               {...register('confirmPassword')}
               placeholder="Repita a senha"
+              autoComplete="new-password"
             />
             {errors.confirmPassword && <p className="mt-1 text-xs text-destructive">{errors.confirmPassword.message}</p>}
           </div>
