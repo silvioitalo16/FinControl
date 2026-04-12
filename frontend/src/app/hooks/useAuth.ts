@@ -117,14 +117,3 @@ export function useForgotPassword() {
   })
 }
 
-export function useResetPassword() {
-  const navigate = useNavigate()
-
-  return useMutation({
-    mutationFn: (newPassword: string) => authService.updatePassword(newPassword),
-    onSuccess: () => {
-      toast.success('Senha alterada com sucesso.')
-      navigate(ROUTES.LOGIN)
-    },
-  })
-}

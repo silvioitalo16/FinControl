@@ -4,6 +4,29 @@ import { ROUTES } from '@/app/config/routes'
 import { ProtectedRoute } from '@/app/components/shared/ProtectedRoute'
 import { AppLayout } from '@/app/components/layout/AppLayout'
 
+/**
+ * Quando um link de email cai na raiz com fragmento de auth (ex: Supabase
+ * com Site URL apontando pra raiz, ou redirectTo bloqueado pela allowlist),
+ * preserva o fragmento e encaminha pra rota correta. Sem fragmento, renderiza
+ * o Login normalmente (não pode redirecionar pra "/" — causa loop, já que
+ * ROUTES.LOGIN === "/").
+ */
+function RootHashRedirect() {
+  const hash = typeof window !== 'undefined' ? window.location.hash : ''
+  if (hash && hash.length > 1) {
+    const params = new URLSearchParams(hash.slice(1))
+    const type = params.get('type')
+    const errorCode = params.get('error_code') ?? params.get('error')
+    if (type === 'recovery' || errorCode) {
+      return <Navigate to={`/reset-password${hash}`} replace />
+    }
+    if (type === 'signup' || type === 'invite' || type === 'magiclink') {
+      return <Navigate to={`/dashboard${hash}`} replace />
+    }
+  }
+  return <SuspenseWrapper><Login /></SuspenseWrapper>
+}
+
 // Lazy loading — cada página é um chunk separado
 const Login        = lazy(() => import('@/app/pages/auth/Login'))
 const SignUp       = lazy(() => import('@/app/pages/auth/SignUp'))
@@ -29,11 +52,12 @@ const SuspenseWrapper = ({ children }: { children: React.ReactNode }) => (
 )
 
 export const router = createBrowserRouter([
+  // Raiz (ROUTES.LOGIN === '/'): renderiza Login, mas se vier com fragmento
+  // de auth no hash (email do Supabase caindo na Site URL raiz), redireciona
+  // pra rota correta preservando o fragmento.
+  { path: ROUTES.LOGIN, element: <RootHashRedirect /> },
+
   // ── Rotas públicas ────────────────────────────────────────────────────────
-  {
-    path: ROUTES.LOGIN,
-    element: <SuspenseWrapper><Login /></SuspenseWrapper>,
-  },
   {
     path: ROUTES.SIGNUP,
     element: <SuspenseWrapper><SignUp /></SuspenseWrapper>,

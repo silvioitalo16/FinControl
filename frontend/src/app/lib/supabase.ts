@@ -18,7 +18,11 @@ if (!g[GLOBAL_KEY]) {
     auth: {
       autoRefreshToken: true,
       persistSession: true,
-      detectSessionInUrl: true,
+      // Desabilitado: o backend usa admin.generateLink (fluxo implícito com
+      // tokens no hash), enquanto o client está em PKCE. O ResetPassword parseia
+      // o fragmento manualmente e chama setSession. Deixar o Supabase processar
+      // o hash sozinho trava a Promise de setSession por conflito de estado.
+      detectSessionInUrl: false,
       flowType: 'pkce',
       lock: async (_name, _acquireTimeout, fn) => fn(),
     },

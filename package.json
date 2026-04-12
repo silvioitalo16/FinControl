@@ -6,7 +6,7 @@
   "scripts": {
     "dev:frontend": "npm run dev --prefix frontend",
     "dev:backend": "npm run dev --prefix backend",
-    "dev:all": "npx concurrently -n FRONT,BACK -c cyan,green \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:all": "scripts\\dev.bat",
     "build:frontend": "npm run build --prefix frontend",
     "build:backend": "npm run build --prefix backend",
     "build": "npm run build:frontend && npm run build:backend",

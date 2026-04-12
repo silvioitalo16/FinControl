@@ -1,98 +1,116 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { toast } from 'sonner'
 import { resetPasswordSchema, type ResetPasswordInput } from '@/app/validators/auth.schema'
-import { useResetPassword } from '@/app/hooks/useAuth'
-import { supabase } from '@/app/lib/supabase'
+import { parseSupabaseError } from '@/app/utils/errors'
+import { ROUTES } from '@/app/config/routes'
 import PasswordInput from '@/app/components/PasswordInput'
 
 type SessionState = 'loading' | 'ready' | 'invalid'
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
+const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 const LINK_ERROR_MESSAGES: Record<string, string> = {
   otp_expired: 'Este link de recuperação expirou ou já foi utilizado. Solicite um novo.',
   access_denied: 'Link inválido. Solicite um novo.',
 }
 
+/** Decodifica o payload de um JWT sem validar assinatura — usado só pra
+ *  checar `exp` localmente antes de mandar pra API. */
+function decodeJwtPayload(token: string): { exp?: number } | null {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
+    return JSON.parse(atob(padded))
+  } catch {
+    return null
+  }
+}
+
 export default function ResetPassword() {
+  const navigate = useNavigate()
   const [sessionState, setSessionState] = useState<SessionState>('loading')
   const [invalidReason, setInvalidReason] = useState<string | null>(null)
-  const { mutate: resetPassword, isPending } = useResetPassword()
+  const [accessToken, setAccessToken] = useState<string | null>(null)
+  const [isPending, setIsPending] = useState(false)
+
   const { register, handleSubmit, formState: { errors } } = useForm<ResetPasswordInput>({
     resolver: zodResolver(resetPasswordSchema),
   })
 
   useEffect(() => {
-    let cancelled = false
-
-    function markInvalid(reason: string) {
-      if (cancelled) return
-      setInvalidReason(reason)
-      setSessionState('invalid')
-    }
-
-    // 1) Primeiro parseia o fragmento manualmente — Supabase em modo PKCE não
-    //    processa link implicit-flow (gerado via admin.generateLink no backend)
-    //    e o onAuthStateChange pode disparar antes do mount (race). Então
-    //    estabelecemos a sessão aqui diretamente.
+    // Fluxo manual: contorna o client Supabase (PKCE) que entra em conflito
+    // com tokens implicit-flow gerados pelo backend via admin.generateLink.
+    // Decodificamos o JWT local pra validar expiry e guardamos o token pra
+    // usar direto no PUT /auth/v1/user no submit.
+    //
+    // IMPORTANTE: NÃO limpar o hash aqui. React Strict Mode monta o componente
+    // duas vezes em dev — se limpássemos na primeira, a segunda montagem
+    // encontraria hash vazio e marcaria como inválido. O hash só é removido
+    // depois do submit bem-sucedido.
     const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : ''
     const params = new URLSearchParams(hash)
     const errorCode = params.get('error_code') ?? params.get('error')
-    const accessToken = params.get('access_token')
-    const refreshToken = params.get('refresh_token')
+    const token = params.get('access_token')
 
     if (errorCode) {
-      markInvalid(LINK_ERROR_MESSAGES[errorCode] ?? 'Link inválido ou expirado. Solicite um novo.')
-      // Limpa fragmento da URL (remove token/erro do histórico)
-      window.history.replaceState(null, '', window.location.pathname)
-      return () => {
-        cancelled = true
-      }
+      setInvalidReason(LINK_ERROR_MESSAGES[errorCode] ?? 'Link inválido ou expirado. Solicite um novo.')
+      setSessionState('invalid')
+      return
     }
 
-    if (accessToken && refreshToken) {
-      supabase.auth
-        .setSession({ access_token: accessToken, refresh_token: refreshToken })
-        .then(({ error }) => {
-          if (cancelled) return
-          if (error) {
-            markInvalid('Não foi possível validar o link de recuperação. Solicite um novo.')
-          } else {
-            setSessionState('ready')
-          }
-          // Remove tokens do fragmento — não deixa credencial no histórico
-          window.history.replaceState(null, '', window.location.pathname)
-        })
-      return () => {
-        cancelled = true
-      }
+    if (!token) {
+      setInvalidReason('Link inválido. Solicite um novo.')
+      setSessionState('invalid')
+      return
     }
 
-    // 2) Fallback: sem fragmento (PKCE real, ou usuário já tem sessão ativa).
-    //    Inscreve no auth state change e também verifica a sessão atual.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (cancelled) return
-      if ((event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') && session) {
-        setSessionState('ready')
-      }
-    })
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return
-      if (data.session) setSessionState('ready')
-    })
-
-    const timeout = setTimeout(() => {
-      if (cancelled) return
-      setSessionState((prev) => (prev === 'loading' ? 'invalid' : prev))
-      setInvalidReason((prev) => prev ?? 'Link inválido ou expirado. Solicite um novo.')
-    }, 8_000)
-
-    return () => {
-      cancelled = true
-      subscription.unsubscribe()
-      clearTimeout(timeout)
+    const payload = decodeJwtPayload(token)
+    if (!payload || typeof payload.exp !== 'number' || payload.exp * 1000 < Date.now()) {
+      setInvalidReason('Este link de recuperação expirou. Solicite um novo.')
+      setSessionState('invalid')
+      return
     }
+
+    setAccessToken(token)
+    setSessionState('ready')
   }, [])
+
+  async function onSubmit(data: ResetPasswordInput) {
+    if (!accessToken || isPending) return
+    setIsPending(true)
+    try {
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: SUPABASE_ANON,
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ password: data.password }),
+      })
+
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { msg?: string; error_description?: string; message?: string }
+        const rawMessage = body.msg ?? body.error_description ?? body.message ?? 'Não foi possível alterar a senha.'
+        throw new Error(rawMessage)
+      }
+
+      // Remove token do histórico depois do sucesso
+      window.history.replaceState(null, '', window.location.pathname)
+      toast.success('Senha alterada com sucesso.')
+      navigate(ROUTES.LOGIN)
+    } catch (error) {
+      toast.error(parseSupabaseError(error))
+    } finally {
+      setIsPending(false)
+    }
+  }
 
   if (sessionState === 'loading') {
     return (
@@ -132,7 +150,7 @@ export default function ResetPassword() {
           <p className="mt-2 text-sm text-muted-foreground">Escolha uma nova senha segura.</p>
         </div>
 
-        <form onSubmit={handleSubmit((data) => resetPassword(data.password))} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium">Nova senha</label>
             <PasswordInput
