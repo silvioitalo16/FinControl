@@ -16,6 +16,9 @@ export async function verifyTurnstile(token: string | undefined, ip: string | un
   if (!env.TURNSTILE_SECRET_KEY) return true // dev mode — sem Turnstile
   if (!token) return false
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
+
   try {
     const res = await fetch(VERIFY_URL, {
       method: 'POST',
@@ -25,6 +28,7 @@ export async function verifyTurnstile(token: string | undefined, ip: string | un
         response: token,
         ...(ip ? { remoteip: ip } : {}),
       }),
+      signal: controller.signal,
     })
 
     const data: TurnstileResult = await res.json()
@@ -37,5 +41,7 @@ export async function verifyTurnstile(token: string | undefined, ip: string | un
   } catch (err) {
     logger.error('Turnstile verification error', { error: String(err) })
     return false
+  } finally {
+    clearTimeout(timeout)
   }
 }

@@ -1,35 +1,25 @@
 import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
 import { z } from 'zod'
-import { logger } from '../utils/logger'
+import { logger, sanitizeDeep, sanitizeUrl } from '../utils/logger'
 
 const router = Router()
 
 const logsLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 60,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: { message: 'Limite de logs excedido.', code: 'RATE_LIMITED' } },
 })
 
-const SENSITIVE_LOG_FIELDS = ['password', 'token', 'secret', 'key', 'authorization', 'cookie']
 const MAX_DATA_SIZE = 2048 // 2KB
 
-function sanitizeLogData(data: unknown): unknown {
+function capSize(data: unknown): unknown {
   if (data === undefined || data === null) return data
   const str = JSON.stringify(data)
   if (str.length > MAX_DATA_SIZE) return { _truncated: true, _size: str.length }
-  if (typeof data === 'object' && data !== null) {
-    const safe = { ...(data as Record<string, unknown>) }
-    for (const field of Object.keys(safe)) {
-      if (SENSITIVE_LOG_FIELDS.some((s) => field.toLowerCase().includes(s))) {
-        safe[field] = '[REDACTED]'
-      }
-    }
-    return safe
-  }
-  return data
+  return sanitizeDeep(data)
 }
 
 const logSchema = z.object({
@@ -44,7 +34,6 @@ const logSchema = z.object({
 /**
  * POST /api/logs
  * Recebe logs do frontend (erros, warnings) e os registra via Winston.
- * Permite rastrear erros de produção no frontend.
  */
 router.post('/', logsLimiter, (req, res, next) => {
   try {
@@ -57,11 +46,11 @@ router.post('/', logsLimiter, (req, res, next) => {
     const { level, message, data, timestamp, url, userAgent } = parsed.data
     const meta = {
       source:    'frontend',
-      url,
+      url:       sanitizeUrl(url),
       userAgent: userAgent ?? req.headers['user-agent'],
-      clientIp:  (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.ip,
+      clientIp:  req.ip,
       timestamp,
-      data: sanitizeLogData(data),
+      data: capSize(data),
     }
 
     logger[level](`[FRONTEND] ${message}`, meta)

@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { toast } from 'sonner'
 import { Camera, Edit2, Save, X, Lock, User, Calendar, Phone, MapPin } from 'lucide-react'
 import { useProfile, useUpdateProfile, useUploadAvatar, useChangePassword } from '@/app/hooks/useProfile'
 import { useTransactions } from '@/app/hooks/useTransactions'
@@ -8,6 +9,7 @@ import { useGoals } from '@/app/hooks/useGoals'
 import { profileSchema, changePasswordSchema, type ProfileInput, type ChangePasswordInput } from '@/app/validators/profile.schema'
 import { formatCurrency, getInitials } from '@/app/utils/formatters'
 import { useAuthStore } from '@/app/stores/auth.store'
+import { MAX_AVATAR_SIZE_MB, ALLOWED_AVATAR_MIME_TYPES } from '@/app/config/constants'
 
 function ProfileForm({ onCancel }: { onCancel: () => void }) {
   const { data: profile } = useProfile()
@@ -163,7 +165,22 @@ export default function Profile() {
 
   function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) uploadAvatar.mutate(file)
+    if (!file) return
+
+    if (!ALLOWED_AVATAR_MIME_TYPES.includes(file.type as typeof ALLOWED_AVATAR_MIME_TYPES[number])) {
+      toast.error('Formato inválido. Use PNG, JPEG ou WebP.')
+      e.target.value = ''
+      return
+    }
+
+    const maxBytes = MAX_AVATAR_SIZE_MB * 1024 * 1024
+    if (file.size > maxBytes) {
+      toast.error(`Imagem muito grande. Tamanho máximo: ${MAX_AVATAR_SIZE_MB} MB.`)
+      e.target.value = ''
+      return
+    }
+
+    uploadAvatar.mutate(file)
   }
 
   return (
@@ -185,7 +202,13 @@ export default function Profile() {
             >
               <Camera className="w-4 h-4" />
             </button>
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ALLOWED_AVATAR_MIME_TYPES.join(',')}
+              className="hidden"
+              onChange={handleAvatarChange}
+            />
           </div>
 
           {/* Info */}

@@ -6,18 +6,23 @@ import { z } from 'zod'
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') })
 dotenv.config({ path: path.resolve(process.cwd(), '.env'), override: false })
 
-const schema = z.object({
-  PORT:                      z.string().default('3001'),
-  APP_URL:                   z.string().url().default('http://localhost:5173'),
-  CORS_ORIGIN:               z.string().default('http://localhost:5173'),
-  NODE_ENV:                  z.enum(['development', 'production', 'test']).default('development'),
-  LOG_LEVEL:                 z.enum(['error', 'warn', 'info', 'http', 'debug']).default('info'),
-  SUPABASE_URL:              z.string().min(1, 'SUPABASE_URL obrigatório'),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY obrigatório'),
-  RESEND_API_KEY:            z.string().min(1, 'RESEND_API_KEY obrigatório'),
-  EMAIL_FROM:                z.string().default('FinControl <onboarding@resend.dev>'),
-  TURNSTILE_SECRET_KEY:      z.string().optional(),
-})
+const schema = z
+  .object({
+    PORT:                      z.string().default('3001'),
+    APP_URL:                   z.string().url().default('http://localhost:5173'),
+    CORS_ORIGIN:               z.string().default('http://localhost:5173'),
+    NODE_ENV:                  z.enum(['development', 'production', 'test']),
+    LOG_LEVEL:                 z.enum(['error', 'warn', 'info', 'http', 'debug']).default('info'),
+    SUPABASE_URL:              z.string().min(1, 'SUPABASE_URL obrigatório'),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY obrigatório'),
+    RESEND_API_KEY:            z.string().min(1, 'RESEND_API_KEY obrigatório'),
+    EMAIL_FROM:                z.string().default('FinControl <onboarding@resend.dev>'),
+    TURNSTILE_SECRET_KEY:      z.string().optional(),
+  })
+  .refine(
+    (data) => data.NODE_ENV !== 'production' || !!data.TURNSTILE_SECRET_KEY,
+    { message: 'TURNSTILE_SECRET_KEY é obrigatório em produção.', path: ['TURNSTILE_SECRET_KEY'] },
+  )
 
 const parsed = schema.safeParse(process.env)
 

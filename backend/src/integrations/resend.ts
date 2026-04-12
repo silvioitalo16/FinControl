@@ -22,25 +22,38 @@ export async function sendTransactionalEmail({ to, subject, html }: SendEmailInp
     throw createError('RESEND_API_KEY não configurada no backend.', 500, 'RESEND_NOT_CONFIGURED')
   }
 
-  const response = await fetch(RESEND_API_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: env.EMAIL_FROM,
-      to: Array.isArray(to) ? to : [to],
-      subject,
-      html,
-    }),
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
 
-  const payload = await response.json() as ResendSendEmailResponse
+  try {
+    const response = await fetch(RESEND_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: env.EMAIL_FROM,
+        to: Array.isArray(to) ? to : [to],
+        subject,
+        html,
+      }),
+      signal: controller.signal,
+    })
 
-  if (!response.ok || payload.error) {
-    throw createError(payload.error?.message ?? 'Falha ao enviar email via Resend.', 502, 'RESEND_SEND_FAILED')
+    const payload = await response.json() as ResendSendEmailResponse
+
+    if (!response.ok || payload.error) {
+      throw createError(payload.error?.message ?? 'Falha ao enviar email via Resend.', 502, 'RESEND_SEND_FAILED')
+    }
+
+    return payload
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw createError('Timeout ao enviar email via Resend.', 504, 'RESEND_TIMEOUT')
+    }
+    throw err
+  } finally {
+    clearTimeout(timeout)
   }
-
-  return payload
 }

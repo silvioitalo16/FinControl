@@ -33,3 +33,11 @@ export const MAX_FUTURE_TRANSACTION_DAYS = 365
 // Upload
 export const MAX_AVATAR_SIZE_MB = 2
 export const AVATAR_BUCKET = 'avatars'
+export const ALLOWED_AVATAR_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const
+
+/** Mapeia MIME → extensão canônica (não confia no nome do arquivo). */
+export const AVATAR_MIME_TO_EXT: Record<string, string> = {
+  'image/png':  'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+}

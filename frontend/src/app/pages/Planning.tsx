@@ -147,10 +147,6 @@ function SalaryModal({ open, onClose }: { open: boolean; onClose: () => void }) 
     }
   }
 
-  function onInvalidSubmit(errs: object) {
-    console.error('[SalaryModal] validação falhou — verifique os campos:', errs)
-  }
-
   if (!open) return null
 
   return (
@@ -172,7 +168,7 @@ function SalaryModal({ open, onClose }: { open: boolean; onClose: () => void }) 
           </button>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit, onInvalidSubmit)} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
 
           {/* ── PASSO 1: Salário ─────────────────────────────────────────── */}
           {step === 1 && (
